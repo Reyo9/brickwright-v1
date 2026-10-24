@@ -204,9 +204,12 @@
     $('#lSend', b).onclick = sendCode;
     $('#lEmail', b).onkeydown = function(e){ if (e.key === 'Enter') sendCode(); };
     $('#lEmail', b).focus();
+    if (!me || !('turnstileSiteKey' in me)) await refreshMe();
     if (await loadTurnstile() && window.turnstile && $('#lCaptcha')) {
-      captchaId = window.turnstile.render($('#lCaptcha'), {sitekey: me.turnstileSiteKey, theme: 'dark',
-        callback: function(t){ captchaToken = t; }, 'expired-callback': function(){ captchaToken = null; }});
+      captchaId = window.turnstile.render($('#lCaptcha'), {sitekey: me.turnstileSiteKey, theme: 'dark', size: 'flexible',
+        callback: function(t){ captchaToken = t; if ($('#lErr')) $('#lErr').textContent = ''; },
+        'expired-callback': function(){ captchaToken = null; },
+        'error-callback': function(code){ captchaToken = null; if ($('#lErr')) $('#lErr').textContent = 'Captcha error ' + code + ' — check the Turnstile hostname and site key, then reload.'; return true; }});
     } else if (me && me.turnstileSiteKey && $('#lErr')) $('#lErr').textContent = 'The captcha couldn’t load — disable blockers for this site and reload.';
   }
   async function sendCode(){
