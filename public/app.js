@@ -209,7 +209,7 @@
       captchaId = window.turnstile.render($('#lCaptcha'), {sitekey: me.turnstileSiteKey, theme: 'dark', size: 'flexible',
         callback: function(t){ captchaToken = t; if ($('#lErr')) $('#lErr').textContent = ''; },
         'expired-callback': function(){ captchaToken = null; },
-        'error-callback': function(code){ captchaToken = null; if ($('#lErr')) $('#lErr').textContent = 'Captcha error ' + code + ' — check the Turnstile hostname and site key, then reload.'; return true; }});
+        'error-callback': function(code){ captchaToken = null; if ($('#lErr')) $('#lErr').textContent = 'Captcha error ' + code + (String(code).indexOf('110200') === 0 ? ' — this site’s address isn’t added to the Turnstile widget in Cloudflare.' : String(code).indexOf('1101') === 0 || String(code).indexOf('400') === 0 ? ' — the Turnstile site key looks wrong.' : ' — reload and try again.'); return true; }});
     } else if (me && me.turnstileSiteKey && $('#lErr')) $('#lErr').textContent = 'The captcha couldn’t load — disable blockers for this site and reload.';
   }
   async function sendCode(){
@@ -315,30 +315,101 @@
     $('#shareBtn').disabled = !!last.example || !run.parts.length;
   }
 
-  async function aiCall(input, kind, onText){
-    var job = await api('/api/generate', {method: 'POST', body: {prompt: input, detail: last.detail || detail, kind: kind}});
+  function stripThink(t){
+    t = t.replace(/<think>[\s\S]*?<\/think>\s*/g, '');
+    var open = t.indexOf('<think>');
+    return open >= 0 ? t.slice(0, open) : t;
+  }
+  var lastJobId = null;
+  async function aiCall(input, kind, onText, extra){
+    var body = {prompt: input, detail: last.detail || detail, kind: kind};
+    if (extra) for (var k in extra) body[k] = extra[k];
+    var job = await api('/api/generate', {method: 'POST', body: body});
     currentJob = job.jobId;
     var text = '', from = 0;
     refreshMe();
     for (;;) {
       await new Promise(function(r){ setTimeout(r, 900); });
       var st = await api('/api/job?id=' + encodeURIComponent(job.jobId) + '&from=' + from);
-      if (st.text) { text += st.text; from = st.length; onText(text); }
-      if (st.status === 'done') { currentJob = null; refreshMe(); return text; }
+      if (st.text) { text += st.text; from = st.length; }
+      var shown = stripThink(text);
+      var inlineThink = text.length - shown.length;
+      onText(shown, (st.thinking || 0) + inlineThink);
+      if (st.status === 'done') { currentJob = null; lastJobId = job.jobId; refreshMe(); return shown; }
       if (st.status === 'cancelled') { currentJob = null; refreshMe(); throw {code: 'cancelled', message: 'Stopped — your credits were refunded.'}; }
-      if (st.status === 'error') { currentJob = null; refreshMe(); throw {code: 'failed', message: (st.error || 'The build failed.') + (st.refunded ? ' Credits refunded.' : ''), text: text}; }
+      if (st.status === 'error') { currentJob = null; refreshMe(); throw {code: 'failed', message: (st.error || 'The build failed.') + (st.refunded ? ' Credits refunded.' : ''), text: shown}; }
     }
+  }
+
+  // ------------------------------------------------------------------ build checker (runs on the preview result)
+  function analyzeBuild(parts){
+    var n = parts.length, E = 0.2, box = [], i;
+    if (!n) return [];
+    for (i = 0; i < n; i++) {
+      var m = parts[i].m, s = parts[i].sz, h = [0, 0, 0];
+      for (var r = 0; r < 3; r++) h[r] = (Math.abs(m[3 + r * 3]) * s[0] + Math.abs(m[4 + r * 3]) * s[1] + Math.abs(m[5 + r * 3]) * s[2]) / 2;
+      box.push([m[0] - h[0], m[1] - h[1], m[2] - h[2], m[0] + h[0], m[1] + h[1], m[2] + h[2]]);
+    }
+    var groundY = Infinity; box.forEach(function(b){ if (b[1] < groundY) groundY = b[1]; });
+    var par = []; for (i = 0; i < n; i++) par[i] = i;
+    function f(a){ while (par[a] !== a) { par[a] = par[par[a]]; a = par[a]; } return a; }
+    var order = box.map(function(b, k){ return k; }).sort(function(a, b){ return box[a][0] - box[b][0]; });
+    for (var a = 0; a < n; a++) {
+      var A = box[order[a]];
+      for (var b = a + 1; b < n; b++) {
+        var B = box[order[b]];
+        if (B[0] > A[3] + E) break;
+        if (B[1] <= A[4] + E && A[1] <= B[4] + E && B[2] <= A[5] + E && A[2] <= B[5] + E) par[f(order[a])] = f(order[b]);
+      }
+    }
+    var grounded = {};
+    for (i = 0; i < n; i++) if (box[i][1] <= groundY + E) grounded[f(i)] = true;
+    var out = [];
+    for (i = 0; i < n; i++) if (!grounded[f(i)]) out.push({name: parts[i].name || ('part #' + (i + 1)), gap: +(box[i][1] - groundY).toFixed(1)});
+    return out;
+  }
+  function problemsOf(run){
+    var list = [];
+    if (!run.ok) list.push('The script errors: ' + run.error);
+    var fl = analyzeBuild(run.parts);
+    if (fl.length) list.push(fl.length + ' part(s) float in mid-air, not touching the ground or any other part: ' +
+      fl.slice(0, 25).map(function(x){ return x.name + ' (bottom ' + x.gap + ' studs above the ground)'; }).join(', ') + (fl.length > 25 ? ', …' : '') + '.');
+    return {list: list, score: (run.ok ? 0 : 1000) + fl.length, floating: fl.length};
+  }
+  async function autoFix(b){
+    if (!lastJobId || !last.script) return;
+    var run = await runScript(last.script), pr = problemsOf(run);
+    if (!pr.list.length) return;
+    var jobId = lastJobId;
+    var label = (!run.ok ? 'Script error found' : pr.floating + ' floating part' + (pr.floating === 1 ? '' : 's') + ' found') + ' — fixing it (free)…';
+    setStatus(label, '', true); b.relabel(label);
+    try {
+      var text = await aiCall('fix', 'fix', function(t, th){ $('#codeOut').textContent = t; b.lines((t.match(/\n/g) || []).length, th); }, {fixOf: jobId, problems: pr.list.join('\n')});
+      var p = C.parseResponse(text);
+      if (!p.script) return;
+      var run2 = await runScript(p.script), pr2 = problemsOf(run2);
+      if (run2.parts.length && pr2.score < pr.score) { last.script = p.script; last.notes = p.notes || last.notes; }
+    } catch (e) { /* keep the original build */ }
+    $('#codeOut').textContent = last.script;
   }
 
   function startBusy(label){
     busy = true; $('#generateBtn').disabled = true; $('#reviseBtn').disabled = true; $('#stopBtn').hidden = false;
-    var t0 = Date.now(), lines = 0;
+    var t0 = Date.now(), lines = 0, thinking = 0;
     setStatus(label, '', true);
-    var timer = setInterval(function(){
+    var tick = function(){
       var s = Math.round((Date.now() - t0) / 1000);
-      setStatus(lines ? 'Writing the script… ' + lines + ' lines · ' + s + 's' : label + ' ' + s + 's' + (s > 20 ? ' — still planning, first lines usually show within a minute' : ''), '', true);
-    }, 1000);
-    return {lines: function(n){ lines = n; }, done: function(){ clearInterval(timer); busy = false; $('#generateBtn').disabled = false; $('#reviseBtn').disabled = false; $('#stopBtn').hidden = true; }};
+      var msg = lines > 1 ? 'Writing the script… ' + lines + ' lines · ' + s + 's'
+        : thinking ? 'Thinking it through… ' + (thinking > 999 ? (thinking / 1000).toFixed(1) + 'k' : thinking) + ' chars of planning · ' + s + 's'
+        : label + ' ' + s + 's' + (s > 20 ? ' — waiting for the AI to start' : '');
+      setStatus(msg, '', true);
+    };
+    var timer = setInterval(tick, 1000);
+    return {
+      lines: function(n, th){ lines = n; if (th) thinking = th; },
+      relabel: function(l){ label = l; lines = 0; thinking = 0; t0 = Date.now(); },
+      done: function(){ clearInterval(timer); busy = false; $('#generateBtn').disabled = false; $('#reviseBtn').disabled = false; $('#stopBtn').hidden = true; }
+    };
   }
   function handleError(e){
     if (e.code === 'login') { setStatus('Sign in to generate — free accounts get ' + ((me && me.freeCreditsPerMonth) || 0) + ' credits a month.', 'err'); openLogin(); return; }
@@ -362,9 +433,10 @@
     $('#codeOut').textContent = '';
     try {
       var prompt = C.buildPrompt(brief, detail, last.treatment, last.csg, false);
-      var text = await aiCall(prompt, 'generate', function(t){ $('#codeOut').textContent = t; b.lines((t.match(/\n/g) || []).length); });
+      var text = await aiCall(prompt, 'generate', function(t, th){ $('#codeOut').textContent = t; b.lines((t.match(/\n/g) || []).length, th); });
       var p = C.parseResponse(text);
       last.script = p.script; last.notes = p.notes;
+      await autoFix(b);
       await showResult(); showTab('preview');
       setStatus('Done — ' + last.parts.length + ' parts.', 'ok');
     } catch (e) {
@@ -386,9 +458,10 @@
         {role: 'assistant', content: 'SCRIPT:\n```lua\n' + last.script + '\n```\nNOTES:\n' + (last.notes || '')},
         {role: 'user', content: 'Revise the script above: ' + ins + '. Keep everything else the same. Respond in the same SCRIPT:/NOTES: format, with the complete revised script.'}
       ];
-      var text = await aiCall(msgs, 'revise', function(t){ $('#codeOut').textContent = t; b.lines((t.match(/\n/g) || []).length); });
+      var text = await aiCall(msgs, 'revise', function(t, th){ $('#codeOut').textContent = t; b.lines((t.match(/\n/g) || []).length, th); });
       var p = C.parseResponse(text);
       last.script = p.script; last.notes = p.notes;
+      await autoFix(b);
       $('#reviseInput').value = '';
       await showResult(); showTab('preview');
       setStatus('Revision applied — ' + last.parts.length + ' parts.', 'ok');

@@ -31,6 +31,7 @@ export default async (req) => {
     status: stuck ? 'error' : job.status,
     error: stuck ? 'The build never started — please try again.' : (job.error || null),
     refunded: !!job.refunded,
+    thinking: job.thinking || 0,
     length: text.length,
     text: text.slice(from),
   });

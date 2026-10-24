@@ -2,6 +2,7 @@
 // marks the job done/failed, and refunds the credits if no complete script came back.
 import { CONFIG } from '../lib/config.mjs';
 import { redis, refund, internalToken } from '../lib/core.mjs';
+import { COACH } from '../lib/coach.mjs';
 
 async function setJob(id, patch) {
   const raw = await redis('GET', 'job:' + id);
@@ -45,10 +46,10 @@ export default async (req) => {
     } else {
       const base = (process.env.AI_BASE_URL || CONFIG.aiBaseUrl).replace(/\/$/, '');
       const model = process.env.AI_MODEL || CONFIG.aiModel;
-      const body = { model, max_tokens: maxTokens, stream: true, messages };
-      // Nemotron "thinks" silently for minutes before writing; turn that off unless AI_THINKING=on
-      if (/nemotron/i.test(model) && process.env.AI_THINKING !== 'on') {
-        body.messages = [{ role: 'system', content: '/no_think' }, ...messages];
+      const body = { model, max_tokens: maxTokens, stream: true, messages: [{ role: 'system', content: COACH }, ...messages] };
+      // Nemotron thinks before writing (better builds, slower). AI_THINKING=off turns it off for speed.
+      if (/nemotron/i.test(model) && process.env.AI_THINKING === 'off') {
+        body.messages[0] = { role: 'system', content: '/no_think\n\n' + COACH };
         body.chat_template_kwargs = { enable_thinking: false };
         body.reasoning_effort = 'none';
       }

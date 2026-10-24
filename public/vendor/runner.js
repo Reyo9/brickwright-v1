@@ -190,7 +190,8 @@ function runLuauPreview(fengari, prelude, brickHexTable, source){
       rgb: [num(16), num(17), num(18)],
       t: num(19),
       mat: f[20],
-      faces: f[21] || '000000'
+      faces: f[21] || '000000',
+      name: f[22] || ''
     });
   }
   var err = status === 'OK' ? null : status.replace(/^ERR /, '');

@@ -855,11 +855,11 @@ local function shapeCode(cls, p)
 	end
 	return "b"
 end
-local function emitPiece(out, code, size, cf, color, transp, mat, flags)
+local function emitPiece(out, code, size, cf, color, transp, mat, flags, name)
 	local c = color or c3(0.64, 0.64, 0.65)
 	out[#out+1] = table.concat({code, fmt(size[1]), fmt(size[2]), fmt(size[3]),
 		fmt(cf[1]), fmt(cf[2]), fmt(cf[3]), fmt(cf[4]), fmt(cf[5]), fmt(cf[6]), fmt(cf[7]), fmt(cf[8]), fmt(cf[9]), fmt(cf[10]), fmt(cf[11]), fmt(cf[12]),
-		fmt(c[1]), fmt(c[2]), fmt(c[3]), fmt(transp or 0), (mat and mat.Name) or "Plastic", flags or "000000"}, ",")
+		fmt(c[1]), fmt(c[2]), fmt(c[3]), fmt(transp or 0), (mat and mat.Name) or "Plastic", flags or "000000", (tostring(name or ""):gsub("[,\n\r\t]", " "))}, ",")
 end
 function __export(ok, err)
 	local out = {}
@@ -878,10 +878,10 @@ function __export(ok, err)
 				for _, pc in ipairs(pieces) do
 					local code = (pc.cls == "WedgePart" and "w") or (pc.cls == "CornerWedgePart" and "k") or
 						((pc.shape and pc.shape.Name == "Ball") and "s") or ((pc.shape and pc.shape.Name == "Cylinder") and "c") or "b"
-					if tr < 0.98 then emitPiece(out, code, pc.size, cmul(delta, pc.cf), p.Color or pc.color, tr, p.Material or pc.mat, "000000") shown = shown + 1 end
+					if tr < 0.98 then emitPiece(out, code, pc.size, cmul(delta, pc.cf), p.Color or pc.color, tr, p.Material or pc.mat, "000000", p.Name or rawget(o, "Name")) shown = shown + 1 end
 				end
 			elseif tr < 0.98 and p.Size and p.CFrame then
-				emitPiece(out, shapeCode(cls, p), p.Size, p.CFrame, p.Color, tr, p.Material, surfFlags(p))
+				emitPiece(out, shapeCode(cls, p), p.Size, p.CFrame, p.Color, tr, p.Material, surfFlags(p), p.Name or rawget(o, "Name"))
 				shown = shown + 1
 			end
 		end
