@@ -1,0 +1,10 @@
+{
+  "name": "brickwright",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Brickwright on Netlify: static site + functions (email login, credits, Stripe plans, Explore, AI via NVIDIA Nemotron).",
+  "dependencies": {
+    "nodemailer": "^6.9.16"
+  }
+}
