@@ -48,9 +48,10 @@ export default async (req) => {
       const model = process.env.AI_MODEL || CONFIG.aiModel;
       const body = { model, max_tokens: maxTokens, stream: true, messages: [{ role: 'system', content: COACH }, ...messages] };
       // Nemotron thinks before writing (better builds, slower). AI_THINKING=off turns it off for speed.
-      if (/nemotron/i.test(model) && process.env.AI_THINKING === 'off') {
-        body.messages[0] = { role: 'system', content: '/no_think\n\n' + COACH };
-        body.chat_template_kwargs = { enable_thinking: false };
+      // AI_THINKING=off: ask any model (Nemotron, DeepSeek, GLM, Qwen…) to skip its hidden thinking
+      if (process.env.AI_THINKING === 'off') {
+        if (/nemotron/i.test(model)) body.messages[0] = { role: 'system', content: '/no_think\n\n' + COACH };
+        body.chat_template_kwargs = { enable_thinking: false, thinking: false };
         body.reasoning_effort = 'none';
       }
       const call = (b) => fetch(base + '/chat/completions', {
@@ -116,3 +117,4 @@ export default async (req) => {
 };
 
 export const config = { path: '/api/generate-run', background: true };
+        
