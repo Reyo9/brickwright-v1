@@ -24,11 +24,12 @@ export default async (req) => {
   const { messages, maxTokens } = JSON.parse(rawReq);
   await setJob(id, { status: 'running' });
 
-  let full = '', failure = null, lastSave = 0, cancelled = false;
+  let full = '', failure = null, lastSave = 0, cancelled = false, thinking = 0;
   const save = async (force) => {
     if (!force && Date.now() - lastSave < 700) return;
     lastSave = Date.now();
     await redis('SET', 'job:' + id + ':text', full, 'EX', 3600);
+    if (thinking && !full) await setJob(id, { thinking });
     if (await redis('GET', 'job:' + id + ':cancel')) cancelled = true;
   };
 
@@ -43,11 +44,26 @@ export default async (req) => {
       });
     } else {
       const base = (process.env.AI_BASE_URL || CONFIG.aiBaseUrl).replace(/\/$/, '');
-      upstream = await fetch(base + '/chat/completions', {
+      const model = process.env.AI_MODEL || CONFIG.aiModel;
+      const body = { model, max_tokens: maxTokens, stream: true, messages };
+      // Nemotron "thinks" silently for minutes before writing; turn that off unless AI_THINKING=on
+      if (/nemotron/i.test(model) && process.env.AI_THINKING !== 'on') {
+        body.messages = [{ role: 'system', content: '/no_think' }, ...messages];
+        body.chat_template_kwargs = { enable_thinking: false };
+        body.reasoning_effort = 'none';
+      }
+      const call = (b) => fetch(base + '/chat/completions', {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: 'Bearer ' + process.env.AI_API_KEY },
-        body: JSON.stringify({ model: process.env.AI_MODEL || CONFIG.aiModel, max_tokens: maxTokens, stream: true, messages }),
+        body: JSON.stringify(b),
       });
+      upstream = await call(body);
+      if (upstream.status === 400 && (body.chat_template_kwargs || body.reasoning_effort)) {
+        // provider rejected the extra switches — retry with only the /no_think system line
+        await upstream.text().catch(() => '');
+        delete body.chat_template_kwargs; delete body.reasoning_effort;
+        upstream = await call(body);
+      }
     }
     if (!upstream.ok || !upstream.body) {
       const t = await upstream.text().catch(() => '');
@@ -75,6 +91,7 @@ export default async (req) => {
         } else {
           const c = ev.choices && ev.choices[0];
           if (c && c.delta && typeof c.delta.content === 'string') full += c.delta.content;
+          if (c && c.delta && (c.delta.reasoning_content || c.delta.reasoning)) thinking += String(c.delta.reasoning_content || c.delta.reasoning).length;
           if (ev.error) throw new Error(ev.error.message || String(ev.error));
         }
       }
