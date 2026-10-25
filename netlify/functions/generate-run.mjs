@@ -75,7 +75,13 @@ export default async (req) => {
         body.model = m;
         for (let attempt = 0; attempt < 3; attempt++) {
           if (attempt) { await new Promise((r) => setTimeout(r, attempt * 4000)); poke(); }
-          upstream = await call(body);
+          try { upstream = await call(body); }
+          catch (e) {
+            if (ctrl.signal.aborted) throw e;
+            log('network error', String(e.message || e), 'model', m, 'try', attempt + 1);
+            upstream = { status: 599, ok: false, body: null, text: async () => String(e.message || e) };
+            continue;
+          }
           log('AI answered HTTP', upstream.status, 'model', m, 'try', attempt + 1);
           if (upstream.status === 400 && (body.chat_template_kwargs || body.reasoning_effort)) {
             // provider rejected the extra switches — retry without them
@@ -126,7 +132,7 @@ export default async (req) => {
     }
   } catch (e) {
     failure = ctrl.signal.aborted
-      ? 'The AI didn’t respond for ' + Math.round(IDLE_MS / 1000) + 's — NVIDIA’s free server may be overloaded. Try again or switch AI_MODEL.'
+      ? 'The AI didn’t respond for ' + Math.round(IDLE_MS / 1000) + 's — the AI service may be overloaded. Please try again.'
       : String(e.message || e);
     log('failed:', failure);
   }
@@ -146,4 +152,3 @@ export default async (req) => {
 };
 
 export const config = { path: '/api/generate-run', background: true };
-                

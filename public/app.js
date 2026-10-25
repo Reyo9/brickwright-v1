@@ -183,41 +183,82 @@
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !$('#modal').hidden) closeModal(); });
 
   // ------------------------------------------------------------------ sign in (email code + captcha)
-  var loginEmail = '', captchaToken = null, captchaId = null;
+  var loginEmail = '', captchaToken = null, captchaId = null, captchaWaiters = [], captchaWatch = null, tsPromise = null;
+  // load Cloudflare's script once, as early as possible (right after the page knows the site key)
   function loadTurnstile(){
-    return new Promise(function(res){
-      if (!me || !me.turnstileSiteKey) return res(false);
-      if (window.turnstile) return res(true);
+    if (!me || !me.turnstileSiteKey) return Promise.resolve(false);
+    if (window.turnstile) return Promise.resolve(true);
+    if (tsPromise) return tsPromise;
+    tsPromise = new Promise(function(res){
       var s = document.createElement('script');
       s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'; s.async = true;
-      s.onload = function(){ res(true); }; s.onerror = function(){ res(false); };
+      s.onload = function(){ res(true); }; s.onerror = function(){ tsPromise = null; res(false); };
       document.head.appendChild(s);
     });
+    return tsPromise;
+  }
+  function gotToken(t){
+    captchaToken = t; clearTimeout(captchaWatch);
+    var st = $('#lCapState'); if (st) st.textContent = '✓ Verified';
+    var btn = $('#lSend'); if (btn && !btn.dataset.sending) { btn.disabled = false; btn.textContent = 'Send code'; }
+    if ($('#lErr')) $('#lErr').textContent = '';
+    var w = captchaWaiters; captchaWaiters = []; w.forEach(function(f){ f(t); });
+  }
+  function waitForToken(ms){
+    if (captchaToken) return Promise.resolve(captchaToken);
+    return new Promise(function(res){ captchaWaiters.push(res); setTimeout(function(){ res(null); }, ms); });
   }
   async function openLogin(){
-    captchaToken = null;
+    captchaToken = null; captchaWaiters = []; clearTimeout(captchaWatch);
     var doms = (me && me.allowedEmailDomains && me.allowedEmailDomains.length) ? me.allowedEmailDomains.map(function(d){ return '@' + d; }).join(' / ') + ' ' : '';
     var b = openModal('<h3>Sign in</h3><p>We’ll email you a 6-digit code — no password. Use your ' + esc(doms) + 'address.</p>' +
       '<div class="field"><input id="lEmail" type="email" autocomplete="email" placeholder="you@gmail.com" value="' + esc(loginEmail) + '"></div>' +
-      '<div class="field" id="lCaptcha"></div><div class="err" id="lErr"></div>' +
+      '<div class="field"><div id="lCaptcha"></div><small class="muted" id="lCapState"></small></div><div class="err" id="lErr"></div>' +
       '<button class="btn btn-primary btn-block btn-lg" id="lSend">Send code</button>');
     $('#lSend', b).onclick = sendCode;
     $('#lEmail', b).onkeydown = function(e){ if (e.key === 'Enter') sendCode(); };
     $('#lEmail', b).focus();
     if (!me || !('turnstileSiteKey' in me)) await refreshMe();
+    if (!me || !me.turnstileSiteKey) return;
+    $('#lCapState').textContent = 'Checking you’re human…';
+    var tries = 0;
+    var arm = function(){ // if Cloudflare hasn't answered in 15s, restart the check (it sometimes stalls)
+      clearTimeout(captchaWatch);
+      captchaWatch = setTimeout(function(){
+        if (captchaToken || !$('#lCaptcha')) return;
+        tries++;
+        if (tries > 3) { $('#lCapState').textContent = 'Still checking… if this takes long, turn off ad blockers/VPN for this site and reload.'; return; }
+        try { window.turnstile.reset(captchaId); } catch (x) {}
+        arm();
+      }, 15000);
+    };
     if (await loadTurnstile() && window.turnstile && $('#lCaptcha')) {
       captchaId = window.turnstile.render($('#lCaptcha'), {sitekey: me.turnstileSiteKey, theme: 'dark', size: 'flexible',
-        callback: function(t){ captchaToken = t; if ($('#lErr')) $('#lErr').textContent = ''; },
+        retry: 'auto', 'retry-interval': 2000, 'refresh-expired': 'auto',
+        callback: gotToken,
         'expired-callback': function(){ captchaToken = null; },
-        'error-callback': function(code){ captchaToken = null; if ($('#lErr')) $('#lErr').textContent = 'Captcha error ' + code + (String(code).indexOf('110200') === 0 ? ' — this site’s address isn’t added to the Turnstile widget in Cloudflare.' : String(code).indexOf('1101') === 0 || String(code).indexOf('400') === 0 ? ' — the Turnstile site key looks wrong.' : ' — reload and try again.'); return true; }});
-    } else if (me && me.turnstileSiteKey && $('#lErr')) $('#lErr').textContent = 'The captcha couldn’t load — disable blockers for this site and reload.';
+        'error-callback': function(code){
+          captchaToken = null;
+          var bad = String(code).indexOf('110200') === 0 ? 'this site’s address isn’t added to the Turnstile widget in Cloudflare.'
+            : (String(code).indexOf('1101') === 0 || String(code).indexOf('400') === 0) ? 'the Turnstile site key looks wrong.' : '';
+          if (bad && $('#lErr')) $('#lErr').textContent = 'Captcha error ' + code + ' — ' + bad;
+          return true; // let Cloudflare retry by itself for the other errors
+        }});
+      arm();
+    } else if ($('#lErr')) $('#lErr').textContent = 'The captcha couldn’t load — disable blockers for this site and reload.';
   }
   async function sendCode(){
     var err = $('#lErr'), btn = $('#lSend');
     loginEmail = $('#lEmail').value.trim();
     if (!loginEmail) { err.textContent = 'Enter your email.'; return; }
-    if (me && me.turnstileSiteKey && !captchaToken) { err.textContent = 'Complete the captcha first.'; return; }
-    btn.disabled = true; btn.textContent = 'Sending…'; err.textContent = '';
+    btn.disabled = true; btn.dataset.sending = '1'; err.textContent = '';
+    if (me && me.turnstileSiteKey && !captchaToken) {
+      // don't make people wait for the widget by hand — just wait for it here
+      btn.textContent = 'Checking you’re human…';
+      await waitForToken(45000);
+      if (!captchaToken) { btn.disabled = false; delete btn.dataset.sending; btn.textContent = 'Send code'; err.textContent = 'The human check didn’t finish — tick the box above if you see one, or reload the page.'; return; }
+    }
+    btn.textContent = 'Sending…';
     try {
       await api('/api/otp-send', {method: 'POST', body: {email: loginEmail, captcha: captchaToken}});
       var b = openModal('<h3>Check your inbox</h3><p>We sent a 6-digit code to <b>' + esc(loginEmail) + '</b>. It expires in 10 minutes — check spam too.</p>' +
@@ -230,7 +271,7 @@
       $('#lCode', b).focus();
     } catch (e) {
       err.textContent = e.message === 'captcha_failed' ? 'Captcha check failed — try it again.' : e.message;
-      btn.disabled = false; btn.textContent = 'Send code';
+      btn.disabled = false; delete btn.dataset.sending; btn.textContent = 'Send code';
       if (window.turnstile && captchaId != null) { try { window.turnstile.reset(captchaId); } catch (x) {} captchaToken = null; }
     }
   }
@@ -245,6 +286,20 @@
     } catch (e) { err.textContent = e.message; btn.disabled = false; }
     verifying = false;
   }
+  function openPromo(){
+    var b = openModal('<h3>Redeem a code</h3><p>Got a promo code? Enter it to add free credits to your account.</p>' +
+      '<div class="field"><input id="pCode" placeholder="CODE" autocomplete="off" style="text-transform:uppercase"></div><div class="err" id="pErr"></div>' +
+      '<button class="btn btn-primary btn-block btn-lg" id="pGo">Redeem</button>');
+    var go = async function(){
+      var code = $('#pCode').value.trim(); if (!code) return;
+      $('#pGo').disabled = true; $('#pErr').textContent = '';
+      try {
+        var r = await api('/api/promo', {method: 'POST', body: {code: code}});
+        closeModal(); toast('+' + r.credits + ' credits added!'); refreshMe();
+      } catch (e) { $('#pErr').textContent = (e.data && e.data.error) || e.message || 'Couldn’t redeem that code.'; $('#pGo').disabled = false; }
+    };
+    $('#pGo', b).onclick = go; $('#pCode', b).onkeydown = function(e){ if (e.key === 'Enter') go(); }; $('#pCode', b).focus();
+  }
   function signOut(){ store(SESSION, null); refreshMe(); toast('Signed out.'); }
 
   // ------------------------------------------------------------------ account (nav)
@@ -252,10 +307,11 @@
     var el = $('#account');
     if (!me || !me.signedIn) { el.innerHTML = '<button class="btn btn-primary btn-sm" data-action="signin">Sign in</button>'; return; }
     var name = (me.user && me.user.name) || '';
-    el.innerHTML = (me.error ? '' : '<a class="credit-pill" href="#pricing" title="Credits left"><svg viewBox="0 0 16 16"><rect x="1" y="5" width="14" height="9" rx="2"/><rect x="3.5" y="2" width="3.5" height="3.5" rx="1"/><rect x="9" y="2" width="3.5" height="3.5" rx="1"/></svg><b>' + Number(me.remaining).toLocaleString() + '</b></a>') +
+    el.innerHTML = (me.error ? '' : '<a class="credit-pill" href="#pricing" title="Credits left"><svg viewBox="0 0 16 16"><rect x="1" y="5" width="14" height="9" rx="2"/><rect x="3.5" y="2" width="3.5" height="3.5" rx="1"/><rect x="9" y="2" width="3.5" height="3.5" rx="1"/></svg><b>' + (me.unlimited ? '∞' : Number(me.remaining).toLocaleString()) + '</b></a>') +
       '<div class="menu"><button class="avatar" id="avatarBtn" aria-label="Account">' + esc((name[0] || '?').toUpperCase()) + '</button>' +
       '<div class="menu-pop" id="menuPop" hidden><div class="who">' + esc(name) + '<small>' + esc(me.planName || 'Free') + ' plan' + (me.resetsAt ? ' · refills ' + fmtDate(me.resetsAt) : '') + '</small></div>' +
       (me.hasBilling ? '<button data-action="portal">Manage subscription</button>' : '<button data-action="pricing">Get more credits</button>') +
+      '<button data-action="promo">Redeem a code</button>' +
       '<button data-action="signout">Sign out</button></div></div>';
     $('#avatarBtn').onclick = function(e){ e.stopPropagation(); $('#menuPop').hidden = !$('#menuPop').hidden; };
   }
@@ -267,6 +323,7 @@
     else if (act === 'signout') signOut();
     else if (act === 'portal') openPortal();
     else if (act === 'pricing') location.hash = '#pricing';
+    else if (act === 'promo') openPromo();
     if (pop) pop.hidden = true;
   });
 
@@ -290,6 +347,7 @@
     var cost = me.costs[detail];
     if (!me.signedIn) el.innerHTML = 'Costs ' + cost + ' credits · <a href="#" data-action="signin">Sign in</a> to get ' + (me.freeCreditsPerMonth || 0).toLocaleString() + ' free credits a month';
     else if (me.error) el.textContent = 'Costs ' + cost + ' credits';
+    else if (me.unlimited) el.textContent = 'Unlimited credits (admin)';
     else el.textContent = 'Costs ' + cost + ' credits · you have ' + Number(me.remaining).toLocaleString() + (me.resetsAt ? ' · refills ' + fmtDate(me.resetsAt) : '');
   }
   function setStatus(text, kind, working){
@@ -368,26 +426,38 @@
     for (i = 0; i < n; i++) if (!grounded[f(i)]) out.push({name: parts[i].name || ('part #' + (i + 1)), gap: +(box[i][1] - groundY).toFixed(1)});
     return out;
   }
-  function problemsOf(run){
+  function badColors(src){
+    var bad = {}, re = /BrickColor\.new\(\s*["']([^"']+)["']\s*\)/g, m;
+    var known = C.BRICK_COLOR_FULL || {};
+    // also catch names passed through variables: "SOME_COL = "Dark brown"" style constants
+    var re2 = /=\s*["']([A-Z][A-Za-z. ]{2,30})["']/g;
+    while ((m = re.exec(src))) if (!known[m[1]]) bad[m[1]] = 1;
+    while ((m = re2.exec(src))) if (/ (grey|gray|red|blue|green|yellow|orange|brown|white|black|pink|purple|violet)\b/i.test(m[1]) && !known[m[1]]) bad[m[1]] = 1;
+    return Object.keys(bad);
+  }
+  function problemsOf(run, src){
     var list = [];
     if (!run.ok) list.push('The script errors: ' + run.error);
+    var bc = src ? badColors(src) : [];
+    if (bc.length) list.push('These BrickColor names do not exist in Roblox and turn grey: ' + bc.map(function(n){ return '"' + n + '"'; }).join(', ') +
+      '. Replace each with the closest real BrickColor name (e.g. "Reddish brown", "Brown", "Dark orange", "Bright red", "Medium stone grey").');
     var fl = analyzeBuild(run.parts);
     if (fl.length) list.push(fl.length + ' part(s) float in mid-air, not touching the ground or any other part: ' +
       fl.slice(0, 25).map(function(x){ return x.name + ' (bottom ' + x.gap + ' studs above the ground)'; }).join(', ') + (fl.length > 25 ? ', …' : '') + '.');
-    return {list: list, score: (run.ok ? 0 : 1000) + fl.length, floating: fl.length};
+    return {list: list, score: (run.ok ? 0 : 1000) + fl.length + bc.length * 5, floating: fl.length, colors: bc.length};
   }
   async function autoFix(b){
     if (!lastJobId || !last.script) return;
-    var run = await runScript(last.script), pr = problemsOf(run);
+    var run = await runScript(last.script), pr = problemsOf(run, last.script);
     if (!pr.list.length) return;
     var jobId = lastJobId;
-    var label = (!run.ok ? 'Script error found' : pr.floating + ' floating part' + (pr.floating === 1 ? '' : 's') + ' found') + ' — fixing it (free)…';
+    var label = (!run.ok ? 'Script error found' : pr.floating ? pr.floating + ' floating part' + (pr.floating === 1 ? '' : 's') + ' found' : 'Wrong color names found') + ' — fixing it (free)…';
     setStatus(label, '', true); b.relabel(label);
     try {
       var text = await aiCall('fix', 'fix', function(t, th){ $('#codeOut').textContent = t; b.lines((t.match(/\n/g) || []).length, th); }, {fixOf: jobId, problems: pr.list.join('\n')});
       var p = C.parseResponse(text);
       if (!p.script) return;
-      var run2 = await runScript(p.script), pr2 = problemsOf(run2);
+      var run2 = await runScript(p.script), pr2 = problemsOf(run2, p.script);
       if (run2.parts.length && pr2.score < pr.score) { last.script = p.script; last.notes = p.notes || last.notes; }
     } catch (e) { /* keep the original build */ }
     $('#codeOut').textContent = last.script;
@@ -632,6 +702,7 @@
       if (q.get('checkout') === 'success') { toast('Payment received — your plan activates in a few seconds.'); setTimeout(refreshMe, 4000); setTimeout(refreshMe, 10000); }
     }
     await refreshMe();
+    loadTurnstile(); // warm up the captcha so the sign-in box is ready instantly
     loadExplore(true);
   })();
 })();

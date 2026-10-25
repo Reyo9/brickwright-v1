@@ -59,6 +59,21 @@ export async function activeSubscription(acct) {
   return live ? s : null;
 }
 
+// ADMIN_EMAILS (comma-separated) get unlimited credits
+export function isAdmin(acct) {
+  const list = String(process.env.ADMIN_EMAILS || '').split(',').map((e) => normalizeEmail(e)).filter(Boolean);
+  return list.some((e) => acct === 'em:' + e);
+}
+// PROMO_CODES = "CODE=credits:maxUses,CODE2=credits:maxUses" (maxUses optional → unlimited people, each account once)
+export function promoCodes() {
+  const out = {};
+  for (const item of String(process.env.PROMO_CODES || '').split(',')) {
+    const m = /^\s*([A-Za-z0-9_-]{3,32})\s*=\s*(\d+)\s*(?::\s*(\d+))?\s*$/.exec(item);
+    if (m) out[m[1].toUpperCase()] = { credits: parseInt(m[2], 10), maxUses: m[3] ? parseInt(m[3], 10) : 0 };
+  }
+  return out;
+}
+
 export async function account(acct) {
   const now = new Date();
   const sub = await activeSubscription(acct);
@@ -71,9 +86,16 @@ export async function account(acct) {
   } else {
     bucket = 'cr:' + acct + ':free:' + monthKey(now); allowance = CONFIG.freeCreditsPerMonth; resetsAt = nextMonthStart(now);
   }
+  // promo-code credits are added on top of this period's allowance
+  const bonus = parseInt((await redis('GET', 'bonus:' + bucket)) || '0', 10) || 0;
+  allowance += bonus;
   const used = parseInt((await redis('GET', bucket)) || '0', 10) || 0;
   const customer = await redis('GET', 'cust:' + acct);
-  return { plan: plan ? plan.id : 'free', planName: plan ? plan.name : 'Free', bucket, allowance, used,
+  if (isAdmin(acct)) {
+    return { plan: 'admin', planName: 'Unlimited', unlimited: true, bucket, allowance: 1e9, used,
+      remaining: 999999, resetsAt, hasBilling: !!customer };
+  }
+  return { plan: plan ? plan.id : 'free', planName: plan ? plan.name : 'Free', bucket, allowance, used, bonus,
     remaining: Math.max(0, allowance - used), resetsAt, hasBilling: !!customer };
 }
 export async function reserve(bucket, allowance, cost) {

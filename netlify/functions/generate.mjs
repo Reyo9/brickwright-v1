@@ -39,20 +39,20 @@ export default async (req) => {
   }
   let acct;
   try { acct = await account(s.sub); } catch (e) { return json({ error: String(e.message || e) }, 500); }
-  if (cost > 0 && !(await reserve(acct.bucket, acct.allowance, cost))) {
+  if (cost > 0 && !acct.unlimited && !(await reserve(acct.bucket, acct.allowance, cost))) {
     return json({ error: 'out_of_credits', cost, remaining: acct.remaining, resetsAt: acct.resetsAt }, 402);
   }
 
   const id = crypto.randomUUID();
   try {
-    await redis('SET', 'job:' + id, JSON.stringify({ acct: s.sub, bucket: acct.bucket, cost, status: 'queued', created: Date.now(), fix: !!body.fixOf }), 'EX', 3600);
+    await redis('SET', 'job:' + id, JSON.stringify({ acct: s.sub, bucket: acct.bucket, cost: acct.unlimited ? 0 : cost, status: 'queued', created: Date.now(), fix: !!body.fixOf }), 'EX', 3600);
     await redis('SET', 'job:' + id + ':req', JSON.stringify({ messages, maxTokens }), 'EX', 3600);
     const r = await fetch(new URL('/api/generate-run', req.url), {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-internal': internalToken() }, body: JSON.stringify({ id }),
     });
     if (r.status >= 400) throw new Error('Background worker refused the job (' + r.status + ')');
   } catch (e) {
-    if (cost > 0) await refund(acct.bucket, cost);
+    if (cost > 0 && !acct.unlimited) await refund(acct.bucket, cost);
     return json({ error: 'Could not start the build: ' + (e.message || e) }, 500);
   }
   return json({ jobId: id, cost });
