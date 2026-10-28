@@ -105,6 +105,19 @@ export async function reserve(bucket, allowance, cost) {
   return true;
 }
 export async function refund(bucket, cost) { try { await redis('DECRBY', bucket, cost); } catch (e) {} }
+// refund a job's credits, including its share of the network's free pool
+export async function refundJob(job) {
+  await refund(job.bucket, job.cost);
+  if (job.ipKey) { try { await redis('DECRBY', job.ipKey, job.cost); } catch (e) {} }
+}
+// Free credits are shared per network per month; returns the pool key if allowed, false if the pool is used up
+export async function reserveNetworkFree(ip, cost) {
+  const k = 'ipfree:' + ip + ':' + monthKey(new Date());
+  const after = await redis('INCRBY', k, cost);
+  await redis('EXPIRE', k, 60 * 60 * 24 * 40);
+  if (after > (CONFIG.freeCreditsPerNetworkPerMonth || 640)) { await redis('DECRBY', k, cost); return false; }
+  return k;
+}
 
 export function publicPlans() {
   return CONFIG.plans.map((p) => ({ id: p.id, name: p.name, price: p.price, credits: p.credits, label: p.label, available: !!planPriceId(p) }));

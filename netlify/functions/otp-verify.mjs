@@ -29,7 +29,25 @@ export default async (req, context) => {
       const n = await redis('INCR', k);
       await redis('EXPIRE', k, 86400);
       if (n > (CONFIG.maxNewAccountsPerIpPerDay || 3)) {
+        await redis('DECR', k);
         return json({ error: 'Too many new accounts from this network today — sign in to an existing one, or try tomorrow.' }, 429);
+      }
+      const k30 = 'newacct30:' + ip;
+      const n30 = await redis('INCR', k30);
+      if (n30 === 1) await redis('EXPIRE', k30, 60 * 60 * 24 * 30);
+      if (n30 > (CONFIG.maxNewAccountsPerIpPer30Days || 4)) {
+        await redis('DECR', k30); await redis('DECR', k);
+        return json({ error: 'Too many accounts have been created from this network recently — please sign in to your existing account.' }, 429);
+      }
+      const dev = String(body.device || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+      if (dev.length >= 16) {
+        const dk = 'dev:' + dev;
+        await redis('SADD', dk, acct);
+        await redis('EXPIRE', dk, 60 * 60 * 24 * 400);
+        if ((await redis('SCARD', dk)) > (CONFIG.maxAccountsPerDevice || 2)) {
+          await redis('SREM', dk, acct); await redis('DECR', k30); await redis('DECR', k);
+          return json({ error: 'This device already has the maximum number of Brickwright accounts — please sign in to one of them.' }, 429);
+        }
       }
       await redis('SET', 'acct:' + acct, JSON.stringify({ created: Date.now(), ip, email: String(body.email).trim().toLowerCase() }));
     }

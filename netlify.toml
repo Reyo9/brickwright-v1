@@ -10,3 +10,23 @@
   for = "/vendor/*"
   [headers.values]
     Cache-Control = "public, max-age=604800"
+
+[[redirects]]
+  from = "/studio"
+  to = "/studio.html"
+  status = 200
+
+[[redirects]]
+  from = "/explore"
+  to = "/explore.html"
+  status = 200
+
+[[redirects]]
+  from = "/b/*"
+  to = "/explore.html"
+  status = 200
+
+[[redirects]]
+  from = "/animate"
+  to = "/animate.html"
+  status = 200

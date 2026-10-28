@@ -1,6 +1,6 @@
 // Polling endpoint: GET /api/job?id=...&from=N returns the job status plus any new text since N.
 // POST /api/job?id=... with {cancel:true} stops a running build (credits are refunded).
-import { json, readJson, readSession, redis, refund } from '../lib/core.mjs';
+import { json, readJson, readSession, redis, refund, refundJob } from '../lib/core.mjs';
 
 export default async (req) => {
   const s = readSession(req);
@@ -23,7 +23,7 @@ export default async (req) => {
   // a job still "queued" after 90s means the background worker never started
   const stuck = job.status === 'queued' && Date.now() - job.created > 90e3;
   if (stuck && !job.refunded && (await redis('SET', 'job:' + id + ':stuckrefund', '1', 'NX', 'EX', 3600))) {
-    await refund(job.bucket, job.cost);
+    await refundJob(job);
     await redis('SET', 'job:' + id, JSON.stringify({ ...job, status: 'error', error: 'The build never started \u2014 please try again.', refunded: true }), 'EX', 3600);
     job.refunded = true;
   }

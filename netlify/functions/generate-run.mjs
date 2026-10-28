@@ -1,8 +1,9 @@
 // Background worker (up to 15 minutes): calls the AI, saves the text to the database as it streams,
 // marks the job done/failed, and refunds the credits if no complete script came back.
 import { CONFIG } from '../lib/config.mjs';
-import { redis, refund, internalToken } from '../lib/core.mjs';
-import { COACH } from '../lib/coach.mjs';
+import { redis, refund, refundJob, internalToken } from '../lib/core.mjs';
+import { COACH as BUILD_COACH } from '../lib/coach.mjs';
+import { TASKS } from '../lib/tasks.mjs';
 
 async function setJob(id, patch) {
   const raw = await redis('GET', 'job:' + id);
@@ -22,7 +23,8 @@ export default async (req) => {
   const rawReq = await redis('GET', 'job:' + id + ':req');
   if (!rawJob || !rawReq) return;
   const job = JSON.parse(rawJob);
-  const { messages, maxTokens } = JSON.parse(rawReq);
+  const { messages, maxTokens, task } = JSON.parse(rawReq);
+  const COACH = task ? TASKS[task] : BUILD_COACH;
   await setJob(id, { status: 'running' });
   const t0 = Date.now();
   const log = (...a) => console.log('[build ' + id.slice(0, 8) + ' +' + Math.round((Date.now() - t0) / 1000) + 's]', ...a);
@@ -48,7 +50,12 @@ export default async (req) => {
       upstream = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: process.env.AI_MODEL || 'claude-sonnet-5-5', max_tokens: maxTokens, stream: true, messages }),
+        body: JSON.stringify({ model: process.env.AI_MODEL || 'claude-sonnet-5-5', max_tokens: maxTokens, stream: true, system: COACH,
+          messages: messages.map((m) => !Array.isArray(m.content) ? m : { ...m, content: m.content.map((c) => {
+            if (c.type !== 'image_url') return c;
+            const mm = /^data:(image\/[a-z]+);base64,(.*)$/.exec(c.image_url.url) || [];
+            return { type: 'image', source: { type: 'base64', media_type: mm[1], data: mm[2] } };
+          }) }) }),
       });
     } else {
       const base = (process.env.AI_BASE_URL || CONFIG.aiBaseUrl).replace(/\/$/, '');
@@ -61,6 +68,10 @@ export default async (req) => {
         body.chat_template_kwargs = { enable_thinking: false, thinking: false };
         body.reasoning_effort = 'none';
       }
+      // cap hidden thinking so builds don't sit "thinking" for 5-10 minutes.
+      // AI_REASONING = none | low | medium | high (default: low for Gemini, unset for others)
+      const effort = process.env.AI_REASONING || (/gemini/i.test(model) ? 'low' : '');
+      if (effort && process.env.AI_THINKING !== 'off') body.reasoning_effort = effort;
       log('calling', model, 'thinking', process.env.AI_THINKING === 'off' ? 'off' : 'on');
       poke();
       const call = (b) => fetch(base + '/chat/completions', {
@@ -90,6 +101,8 @@ export default async (req) => {
             upstream = await call(body);
           }
           if (!busy(upstream.status)) break outer;
+          // 429 = this model's quota is used up — retrying it only burns more quota, so go straight to the next model
+          if (upstream.status === 429) { await upstream.text().catch(() => ''); continue outer; }
           if (await redis('GET', 'job:' + id + ':cancel')) break outer;
           await upstream.text().catch(() => '');
         }
@@ -142,8 +155,8 @@ export default async (req) => {
   // reasoning models may wrap their thinking in <think>...</think>; keep only the answer
   full = full.replace(/<think>[\s\S]*?<\/think>\s*/g, '');
   await save(true);
-  const complete = /```(?:lua|luau)?\s*[\s\S]*?```/i.test(full);
-  if (!complete || cancelled) await refund(job.bucket, job.cost);
+  const complete = task === 'enhance' ? full.trim().length > 10 : task ? /\{[\s\S]*"(groups|keys)"[\s\S]*\}/.test(full) : /```(?:lua|luau)?\s*[\s\S]*?```/i.test(full);
+  if (!complete || cancelled) await refundJob(job);
   await setJob(id, {
     status: cancelled ? 'cancelled' : (complete ? 'done' : 'error'),
     error: cancelled ? null : (complete ? null : (failure || 'The AI didn’t return a complete script.')),

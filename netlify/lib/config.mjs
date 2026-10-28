@@ -9,9 +9,16 @@ export const CONFIG = {
   allowedEmailDomains: ['gmail.com'],
   // At most this many NEW accounts per network (IP address) per day — limits alt farming.
   maxNewAccountsPerIpPerDay: 3,
+  // ...and at most this many in any 30 days from the same network.
+  maxNewAccountsPerIpPer30Days: 4,
+  // At most this many accounts can ever be created from the same browser/device.
+  maxAccountsPerDevice: 2,
+  // Free credits are also capped per network per month, shared by every FREE account on it
+  // (paid plans and admins are never limited by this). 640 = two people's worth.
+  freeCreditsPerNetworkPerMonth: 640,
 
   // What each action costs.
-  costs: { quick: 10, standard: 35, detailed: 75, revise: 10 },
+  costs: { quick: 10, standard: 35, detailed: 75, revise: 10, rig: 30, animate: 45, enhance: 3 },
 
   // Output cap per detail level (reasoning models also spend some of this on thinking).
   maxTokens: { quick: 16000, standard: 24000, detailed: 40000 },

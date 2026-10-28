@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Explore builds — Brickwright</title>
+<meta name="description" content="Browse studded Roblox models the Brickwright community shared. Spin them in 3D, copy the script, or remix them.">
+<meta property="og:title" content="Explore builds — Brickwright">
+<meta property="og:description" content="Browse studded Roblox models the Brickwright community shared. Spin them in 3D, copy the script, or remix them.">
+<meta name="theme-color" content="#0a0c11">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='10' width='28' height='18' rx='4' fill='%23ff6b35'/%3E%3Crect x='7' y='5' width='7' height='6' rx='2' fill='%23ff6b35'/%3E%3Crect x='18' y='5' width='7' height='6' rx='2' fill='%23ff6b35'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body data-page="explore">
+<div class="backdrop" aria-hidden="true"></div>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/" aria-label="Brickwright home"><svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect x="2" y="10" width="28" height="18" rx="4" fill="currentColor"/><rect x="7" y="5" width="7" height="6" rx="2" fill="currentColor"/><rect x="18" y="5" width="7" height="6" rx="2" fill="currentColor"/></svg><span>Brickwright</span></a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="/" data-page="home">Home</a>
+      <a href="/studio" data-page="studio">Studio</a>
+      <a href="/explore" data-page="explore">Explore</a>
+      <a href="/animate" data-page="animate">Animate</a>
+      <a href="/#pricing" data-page="pricing">Pricing</a>
+    </nav>
+    <div class="nav-account" id="account"><button class="btn btn-primary btn-sm" data-action="signin">Sign in</button></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="explore-hero">
+    <span class="kicker">Explore</span>
+    <h1>Community builds</h1>
+    <p class="muted">Every model here was generated in the Studio and shared by its maker. Open one to spin it, copy the script, or remix it into your own.</p>
+  </section>
+  <div class="explore-bar">
+    <div class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="exploreSearch" placeholder="Search builds or makers" aria-label="Search builds"></div>
+    <div class="seg-small" id="exploreSort">
+      <button class="active" data-sort="recent">Recent</button>
+      <button data-sort="top">Top</button>
+    </div>
+    <span class="muted small" id="buildCount"></span>
+  </div>
+  <div class="grid grid-lg" id="exploreGrid"></div>
+  <div class="center"><button class="btn btn-ghost" id="loadMore" hidden>Load more</button></div>
+</main>
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div class="foot-brand"><a class="brand" href="/"><svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect x="2" y="10" width="28" height="18" rx="4" fill="currentColor"/><rect x="7" y="5" width="7" height="6" rx="2" fill="currentColor"/><rect x="18" y="5" width="7" height="6" rx="2" fill="currentColor"/></svg><span>Brickwright</span></a><p class="muted small">Describe it. Get it in bricks.<br>Classic studded Roblox models from a sentence.</p></div>
+    <div class="foot-cols">
+      <div><h4>Product</h4><a href="/studio">Studio</a><a href="/explore">Explore</a><a href="/animate">Animate</a><a href="/#pricing">Pricing</a></div>
+      <div><h4>Help</h4><a href="/#faq">FAQ</a><a href="/#how">How it works</a></div>
+    </div>
+  </div>
+  <div class="wrap foot-base"><span>© <span id="year"></span> Brickwright</span><span class="muted">Not affiliated with or endorsed by Roblox Corporation. Always read a script before running it.</span></div>
+</footer>
+<div class="modal" id="modal" hidden><div class="modal-card" role="dialog" aria-modal="true"><button class="modal-x" aria-label="Close">×</button><div id="modalBody"></div></div></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="/vendor/three.min.js"></script>
+<script src="/vendor/fengari-web.js"></script>
+<script src="/vendor/runner.js"></script>
+<script src="/core.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

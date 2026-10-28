@@ -5,42 +5,41 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Brickwright — describe it, get a brick-built Roblox model</title>
 <meta name="description" content="Describe anything and get a Luau script that builds it out of classic studded Roblox parts. Preview it in 3D, tweak it, share it.">
+<meta property="og:title" content="Brickwright — describe it, get a brick-built Roblox model">
+<meta property="og:description" content="Describe anything and get a Luau script that builds it out of classic studded Roblox parts. Preview it in 3D, tweak it, share it.">
+<meta name="theme-color" content="#0a0c11">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='10' width='28' height='18' rx='4' fill='%23ff6b35'/%3E%3Crect x='7' y='5' width='7' height='6' rx='2' fill='%23ff6b35'/%3E%3Crect x='18' y='5' width='7' height='6' rx='2' fill='%23ff6b35'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css">
 </head>
-<body>
+<body data-page="home">
 <div class="backdrop" aria-hidden="true"></div>
-
 <header class="nav">
   <div class="wrap nav-inner">
-    <a class="brand" href="#top" aria-label="Brickwright home">
-      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect x="2" y="10" width="28" height="18" rx="4" fill="currentColor"/><rect x="7" y="5" width="7" height="6" rx="2" fill="currentColor"/><rect x="18" y="5" width="7" height="6" rx="2" fill="currentColor"/></svg>
-      <span>Brickwright</span>
-    </a>
+    <a class="brand" href="/" aria-label="Brickwright home"><svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect x="2" y="10" width="28" height="18" rx="4" fill="currentColor"/><rect x="7" y="5" width="7" height="6" rx="2" fill="currentColor"/><rect x="18" y="5" width="7" height="6" rx="2" fill="currentColor"/></svg><span>Brickwright</span></a>
     <nav class="nav-links" aria-label="Main">
-      <a href="#create">Create</a>
-      <a href="#explore">Explore</a>
-      <a href="#pricing">Pricing</a>
-      <a href="#faq">FAQ</a>
+      <a href="/" data-page="home">Home</a>
+      <a href="/studio" data-page="studio">Studio</a>
+      <a href="/explore" data-page="explore">Explore</a>
+      <a href="/animate" data-page="animate">Animate</a>
+      <a href="/#pricing" data-page="pricing">Pricing</a>
     </nav>
     <div class="nav-account" id="account"><button class="btn btn-primary btn-sm" data-action="signin">Sign in</button></div>
   </div>
 </header>
 
-<main id="top">
-  <!-- HERO -->
+<main>
   <section class="hero wrap">
     <div class="hero-copy">
       <span class="eyebrow"><i class="dot"></i><span id="heroPill">Free credits every month</span></span>
       <h1>Describe it.<br><span class="grad">Get it in bricks.</span></h1>
-      <p class="lede">Brickwright turns a plain-English idea into a Luau script that builds it out of classic studded Roblox parts — buildings, vehicles, creatures, props. Preview it in 3D, ask for changes, paste it into Studio.</p>
-      <div class="hero-cta">
-        <a class="btn btn-primary btn-lg" href="#create">Start building</a>
-        <a class="btn btn-ghost btn-lg" href="#explore">Explore builds</a>
-      </div>
+      <p class="lede">Brickwright turns one sentence into a Luau script that builds a classic studded Roblox model — buildings, vehicles, creatures, weapons, props. Preview it in 3D, ask for changes, paste it into Studio.</p>
+      <form class="hero-prompt" action="/studio" method="get">
+        <input name="prompt" placeholder="A cozy ramen shop with a red lantern…" aria-label="Describe a model" autocomplete="off">
+        <button class="btn btn-primary" type="submit">Build it <span aria-hidden="true">→</span></button>
+      </form>
       <ul class="hero-points">
         <li>Real Luau, no plugins</li>
         <li>Live 3D preview of the actual script</li>
@@ -55,110 +54,61 @@
     </div>
   </section>
 
-  <!-- CREATE -->
-  <section class="section wrap" id="create">
-    <div class="section-head">
-      <h2>Create</h2>
-      <p>Be specific — proportions, colors and standout details get you closer on the first try.</p>
-    </div>
-    <div class="studio">
-      <div class="panel studio-input">
-        <label class="label" for="brief">What are you building?</label>
-        <textarea id="brief" rows="5" placeholder="A small cozy ramen shop on a street corner, a red lantern over the door, a noren curtain, a delivery scooter out front…"></textarea>
-        <div class="chips" id="chips"></div>
+  <section class="wrap strip" aria-label="Highlights">
+    <div><b>3</b><span>detail levels</span></div>
+    <div><b>1</b><span>script, paste &amp; go</span></div>
+    <div><b>100%</b><span>classic Roblox parts</span></div>
+    <div><b>Free</b><span>auto-fix on every build</span></div>
+  </section>
 
-        <span class="label">Detail level</span>
-        <div class="segmented" id="detailPicker" role="radiogroup" aria-label="Detail level"></div>
-
-        <div class="row-2">
-          <div>
-            <label class="label" for="treatment">Style</label>
-            <select id="treatment"></select>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="allowCsg">
-            <span class="switch-ui"></span>
-            <span class="switch-text">Curved cuts<small>arches, bowls, holes</small></span>
-          </label>
-        </div>
-
-        <button class="btn btn-primary btn-block btn-lg" id="generateBtn">Generate</button>
-        <button class="btn btn-ghost btn-block" id="stopBtn" hidden>Stop</button>
-        <p class="cost-line" id="costLine"></p>
-      </div>
-
-      <div class="panel studio-output">
-        <div class="out-head">
-          <div class="tabs" role="tablist">
-            <button class="tab active" data-tab="preview" role="tab">Preview</button>
-            <button class="tab" data-tab="script" role="tab">Script</button>
-            <button class="tab" data-tab="notes" role="tab">Notes</button>
-          </div>
-          <div class="out-actions">
-            <button class="icon-btn" id="copyBtn" title="Copy script" aria-label="Copy script"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button>
-            <button class="icon-btn" id="downloadBtn" title="Download .lua" aria-label="Download .lua"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg></button>
-            <button class="btn btn-sm btn-accent-soft" id="shareBtn">Share to Explore</button>
-          </div>
-        </div>
-        <div class="status" id="status"><span id="statusText">Example output — generate your own on the left.</span><div class="progress" id="progress" hidden><i></i></div></div>
-        <div class="pane" data-pane="preview">
-          <div class="viewer viewer-lg" id="studioViewer"></div>
-          <div class="pane-foot"><span id="previewInfo"></span><span class="muted">drag to rotate · scroll or pinch to zoom</span></div>
-        </div>
-        <div class="pane" data-pane="script" hidden><pre class="code" id="codeOut"></pre></div>
-        <div class="pane" data-pane="notes" hidden><div class="notes" id="notesOut"></div></div>
-        <div class="revise">
-          <input id="reviseInput" placeholder="Ask for a change — e.g. make the lantern bigger and add a second one">
-          <button class="btn" id="reviseBtn">Revise</button>
-        </div>
-        <p class="hint">Paste the script into Studio's command bar (View → Command Bar) and press Enter.</p>
-      </div>
+  <section class="section wrap" id="how">
+    <div class="section-head center"><span class="kicker">How it works</span><h2>From idea to Studio in three steps</h2></div>
+    <div class="steps">
+      <div class="step"><span class="step-n">1</span><h3>Describe it</h3><p>Write what you want — proportions, colors, the details that matter. Pick Quick, Standard or Detailed.</p></div>
+      <div class="step"><span class="step-n">2</span><h3>Watch it build</h3><p>The AI writes the script, our checker runs it and fixes floating parts or broken colors for free, and you spin the result in 3D.</p></div>
+      <div class="step"><span class="step-n">3</span><h3>Paste into Studio</h3><p>Copy the script into Studio’s command bar and press Enter. The model appears in Workspace, fully studded.</p></div>
     </div>
   </section>
 
-  <!-- EXPLORE -->
-  <section class="section wrap" id="explore">
+  <section class="section wrap">
     <div class="section-head row-between">
-      <div>
-        <h2>Explore</h2>
-        <p>Builds the community chose to share. Open one to spin it, copy it, or remix it.</p>
-      </div>
-      <div class="seg-small" id="exploreSort">
-        <button class="active" data-sort="recent">Recent</button>
-        <button data-sort="top">Top</button>
-      </div>
+      <div><span class="kicker">Community</span><h2>Fresh from Explore</h2><p>Builds people chose to share. Open one to spin it, copy it, or remix it.</p></div>
+      <a class="btn" href="/explore">See all builds →</a>
     </div>
     <div class="grid" id="exploreGrid"></div>
-    <div class="center"><button class="btn btn-ghost" id="loadMore" hidden>Load more</button></div>
   </section>
 
-  <!-- PRICING -->
   <section class="section wrap" id="pricing">
-    <div class="section-head center">
-      <h2>Pricing</h2>
-      <p id="pricingLede">Every action costs credits. Failed builds are free.</p>
-    </div>
+    <div class="section-head center"><span class="kicker">Pricing</span><h2>Simple credits, no surprises</h2><p id="pricingLede">Every action costs credits. Failed builds are free.</p></div>
     <div class="plans" id="plans"></div>
     <p class="center muted small" id="billingNote"></p>
   </section>
 
-  <!-- FAQ -->
   <section class="section wrap narrow" id="faq">
-    <div class="section-head center"><h2>FAQ</h2></div>
+    <div class="section-head center"><span class="kicker">FAQ</span><h2>Questions, answered</h2></div>
     <div class="faq" id="faqList"></div>
   </section>
-</main>
 
+  <section class="wrap cta">
+    <div class="cta-card">
+      <h2>Your next build is one sentence away.</h2>
+      <p>Free credits every month. No card needed.</p>
+      <a class="btn btn-primary btn-lg" href="/studio">Open the Studio</a>
+    </div>
+  </section>
+</main>
 <footer class="footer">
   <div class="wrap footer-inner">
-    <span>© <span id="year"></span> Brickwright</span>
-    <span class="muted small">Not affiliated with or endorsed by Roblox Corporation. Always read a script before running it.</span>
+    <div class="foot-brand"><a class="brand" href="/"><svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect x="2" y="10" width="28" height="18" rx="4" fill="currentColor"/><rect x="7" y="5" width="7" height="6" rx="2" fill="currentColor"/><rect x="18" y="5" width="7" height="6" rx="2" fill="currentColor"/></svg><span>Brickwright</span></a><p class="muted small">Describe it. Get it in bricks.<br>Classic studded Roblox models from a sentence.</p></div>
+    <div class="foot-cols">
+      <div><h4>Product</h4><a href="/studio">Studio</a><a href="/explore">Explore</a><a href="/animate">Animate</a><a href="/#pricing">Pricing</a></div>
+      <div><h4>Help</h4><a href="/#faq">FAQ</a><a href="/#how">How it works</a></div>
+    </div>
   </div>
+  <div class="wrap foot-base"><span>© <span id="year"></span> Brickwright</span><span class="muted">Not affiliated with or endorsed by Roblox Corporation. Always read a script before running it.</span></div>
 </footer>
-
 <div class="modal" id="modal" hidden><div class="modal-card" role="dialog" aria-modal="true"><button class="modal-x" aria-label="Close">×</button><div id="modalBody"></div></div></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
-
 <script src="/vendor/three.min.js"></script>
 <script src="/vendor/fengari-web.js"></script>
 <script src="/vendor/runner.js"></script>

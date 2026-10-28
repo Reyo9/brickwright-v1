@@ -6,6 +6,8 @@
   var C = window.BWCore;
   var $ = function(s, r){ return (r || document).querySelector(s); };
   var $$ = function(s, r){ return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var PAGE = document.body.getAttribute('data-page') || 'home';
+  var on = function(sel, ev, fn){ var el = $(sel); if (el) el[ev] = fn; };
   function esc(t){ return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function store(k, v){ try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
   function load(k){ try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -38,7 +40,8 @@
   }
   async function refreshMe(){
     try { me = await api('/api/me'); } catch (e) { me = me || {signedIn: false, plans: [], costs: {quick: 10, standard: 35, detailed: 75, revise: 10}}; }
-    renderAccount(); renderCost(); renderPricing();
+    renderAccount(); renderCost(); if ($('#plans')) renderPricing();
+    if ($('#historyGrid') && histSignedIn !== !!(me && me.signedIn)) loadHistory(true);
     var pill = $('#heroPill'); if (pill && me.freeCreditsPerMonth) pill.textContent = me.freeCreditsPerMonth.toLocaleString() + ' free credits every month';
   }
 
@@ -78,7 +81,15 @@
   Viewer.prototype._resize = function(){
     if (!this.renderer) return;
     var w = this.el.clientWidth || 400, h = this.el.clientHeight || 300;
-    this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); this.dirty = true; this.kick();
+    var prevFit = this.fit ? this._fitRadius() : 0;
+    this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+    if (prevFit && Math.abs(this.rot.radius - prevFit) < 0.01) this.rot.radius = this._fitRadius();
+    this.dirty = true; this.kick();
+  };
+  // pull the camera back on narrow (portrait) screens so the whole model fits side to side
+  Viewer.prototype._fitRadius = function(){
+    var a = this.camera ? this.camera.aspect : 1;
+    return Math.max(8, (this.fit || 10) * 1.95 / Math.min(1, Math.max(0.45, a)));
   };
   Viewer.prototype._controls = function(){
     var self = this, c = this.renderer.domElement, pts = {}, pinch = 0;
@@ -106,8 +117,9 @@
       self.raf = null;
       if (self.destroyed) return;
       if (self.auto) { self.rot.theta += 0.0045; self.dirty = true; }
+      if (self.onFrame) { self.onFrame(); self.dirty = true; }
       if (self.dirty) { self.render(); self.dirty = false; }
-      if (self.auto && self.visible) self.kick();
+      if ((self.auto || self.onFrame) && self.visible) self.kick();
     });
   };
   Viewer.prototype.render = function(){
@@ -125,7 +137,8 @@
       [].concat(m.material || []).forEach(function(mt){ if (mt.map) mt.map.dispose(); mt.dispose(); });
     }
     g.position.set(0, 0, 0);
-    (parts || []).forEach(function(p){ try { g.add(C.shapeMesh(p)); } catch (e) {} });
+    (parts || []).forEach(function(p, i){ try { var mesh = C.shapeMesh(p); mesh.userData.idx = i; g.add(mesh); } catch (e) {} });
+    this.parts = parts || [];
     g.updateMatrixWorld(true);
     var box = new THREE.Box3().setFromObject(g);
     if (box.isEmpty()) { this.dirty = true; this.kick(); return; }
@@ -135,7 +148,8 @@
     var span = Math.max(size.x, size.z, 8);
     var gs = Math.max(1, Math.ceil(span * 1.8 / 80)); this.grid.scale.set(gs, 1, gs);
     var fit = Math.max(size.x, size.y, size.z) || 10;
-    this.rot.radius = Math.max(8, fit * 1.75);
+    this.fit = fit;
+    this.rot.radius = this._fitRadius();
     this.dirty = true; this.kick();
   };
   Viewer.prototype.snapshot = function(){
@@ -163,6 +177,12 @@
     return snapViewer.snapshot();
   }
 
+  function download(name, text){
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], {type: 'text/plain'}));
+    a.download = (name || 'brickwright').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 40) + '.lua';
+    document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
   // ------------------------------------------------------------------ modal
   var modalOnClose = null;
   function openModal(html, wide, onClose){
@@ -281,7 +301,7 @@
     var err = $('#lErr'), btn = $('#lVerify');
     btn.disabled = true; err.textContent = '';
     try {
-      var j = await api('/api/otp-verify', {method: 'POST', body: {email: loginEmail, code: $('#lCode').value}});
+      var j = await api('/api/otp-verify', {method: 'POST', body: {email: loginEmail, code: $('#lCode').value, device: deviceId()}});
       store(SESSION, j.session); closeModal(); await refreshMe(); toast('Signed in — welcome!');
     } catch (e) { err.textContent = e.message; btn.disabled = false; }
     verifying = false;
@@ -300,6 +320,15 @@
     };
     $('#pGo', b).onclick = go; $('#pCode', b).onkeydown = function(e){ if (e.key === 'Enter') go(); }; $('#pCode', b).focus();
   }
+  // a random ID for this browser, kept in localStorage AND a long-lived cookie (one account limit per device)
+  function deviceId(){
+    var id = load('bw_dev');
+    if (!id) { var m = /(?:^|; )bw_dev=([A-Za-z0-9_-]{16,40})/.exec(document.cookie); id = m && m[1]; }
+    if (!id) { var a = new Uint8Array(16); (window.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : a.forEach(function(_, i){ a[i] = Math.random() * 256; }); id = Array.prototype.map.call(a, function(x){ return ('0' + x.toString(16)).slice(-2); }).join(''); }
+    store('bw_dev', id);
+    try { document.cookie = 'bw_dev=' + id + '; path=/; max-age=' + (60 * 60 * 24 * 400) + '; SameSite=Lax; Secure'; } catch (e) {}
+    return id;
+  }
   function signOut(){ store(SESSION, null); refreshMe(); toast('Signed out.'); }
 
   // ------------------------------------------------------------------ account (nav)
@@ -307,7 +336,7 @@
     var el = $('#account');
     if (!me || !me.signedIn) { el.innerHTML = '<button class="btn btn-primary btn-sm" data-action="signin">Sign in</button>'; return; }
     var name = (me.user && me.user.name) || '';
-    el.innerHTML = (me.error ? '' : '<a class="credit-pill" href="#pricing" title="Credits left"><svg viewBox="0 0 16 16"><rect x="1" y="5" width="14" height="9" rx="2"/><rect x="3.5" y="2" width="3.5" height="3.5" rx="1"/><rect x="9" y="2" width="3.5" height="3.5" rx="1"/></svg><b>' + (me.unlimited ? '∞' : Number(me.remaining).toLocaleString()) + '</b></a>') +
+    el.innerHTML = (me.error ? '' : '<a class="credit-pill" href="/#pricing" title="Credits left"><svg viewBox="0 0 16 16"><rect x="1" y="5" width="14" height="9" rx="2"/><rect x="3.5" y="2" width="3.5" height="3.5" rx="1"/><rect x="9" y="2" width="3.5" height="3.5" rx="1"/></svg><b>' + (me.unlimited ? '∞' : Number(me.remaining).toLocaleString()) + '</b></a>') +
       '<div class="menu"><button class="avatar" id="avatarBtn" aria-label="Account">' + esc((name[0] || '?').toUpperCase()) + '</button>' +
       '<div class="menu-pop" id="menuPop" hidden><div class="who">' + esc(name) + '<small>' + esc(me.planName || 'Free') + ' plan' + (me.resetsAt ? ' · refills ' + fmtDate(me.resetsAt) : '') + '</small></div>' +
       (me.hasBilling ? '<button data-action="portal">Manage subscription</button>' : '<button data-action="pricing">Get more credits</button>') +
@@ -322,7 +351,7 @@
     if (act === 'signin') openLogin();
     else if (act === 'signout') signOut();
     else if (act === 'portal') openPortal();
-    else if (act === 'pricing') location.hash = '#pricing';
+    else if (act === 'pricing') location.href = '/#pricing';
     else if (act === 'promo') openPromo();
     if (pop) pop.hidden = true;
   });
@@ -343,6 +372,7 @@
     if (!sel.options.length) sel.innerHTML = C.treatments.map(function(t){ return '<option value="' + esc(t.value) + '">' + esc(t.label) + '</option>'; }).join('');
   }
   function renderCost(){
+    var ec = $('#enhanceCost'); if (ec && me && me.costs && me.costs.enhance != null) ec.textContent = me.unlimited ? '∞' : me.costs.enhance;
     var el = $('#costLine'); if (!el || !me || !me.costs) return;
     var cost = me.costs[detail];
     if (!me.signedIn) el.innerHTML = 'Costs ' + cost + ' credits · <a href="#" data-action="signin">Sign in</a> to get ' + (me.freeCreditsPerMonth || 0).toLocaleString() + ' free credits a month';
@@ -360,6 +390,7 @@
     if (name === 'preview' && studio) studio._resize();
   }
   $$('.tab').forEach(function(t){ t.onclick = function(){ showTab(t.getAttribute('data-tab')); }; });
+  var isStudio = !!$('#generateBtn');
 
   async function showResult(){
     $('#codeOut').textContent = last.script;
@@ -483,10 +514,11 @@
   }
   function handleError(e){
     if (e.code === 'login') { setStatus('Sign in to generate — free accounts get ' + ((me && me.freeCreditsPerMonth) || 0) + ' credits a month.', 'err'); openLogin(); return; }
+    if (e.code === 402 && e.data && e.data.code === 'network_limit') { setStatus(e.message, 'err'); return; }
     if (e.code === 402) {
       var d = e.data || {};
       setStatus('Not enough credits — this needs ' + d.cost + ', you have ' + d.remaining + '. They refill ' + fmtDate(d.resetsAt) + ', or pick a plan.', 'err');
-      location.hash = '#pricing'; return;
+      setTimeout(function(){ location.href = '/#pricing'; }, 1800); return;
     }
     if (e.code === 'cancelled') { setStatus(e.message || 'Stopped.', ''); return; }
     setStatus(e.message || 'Something went wrong.', 'err');
@@ -499,16 +531,18 @@
     if (!session()) { handleError({code: 'login'}); return; }
     var b = startBusy('Planning the build…');
     var prev = last;
-    last = {script: '', notes: '', brief: brief, detail: detail, treatment: $('#treatment').value, csg: $('#allowCsg').checked};
+    last = {script: '', notes: '', brief: brief, detail: detail, treatment: $('#treatment').value, csg: $('#allowCsg').checked, image: refImage};
     $('#codeOut').textContent = '';
     try {
-      var prompt = C.buildPrompt(brief, detail, last.treatment, last.csg, false);
+      var prompt = refImage ? [{role: 'user', content: withImage(C.buildPrompt(brief, detail, last.treatment, last.csg, true), refImage)}]
+        : C.buildPrompt(brief, detail, last.treatment, last.csg, false);
       var text = await aiCall(prompt, 'generate', function(t, th){ $('#codeOut').textContent = t; b.lines((t.match(/\n/g) || []).length, th); });
       var p = C.parseResponse(text);
       last.script = p.script; last.notes = p.notes;
       await autoFix(b);
       await showResult(); showTab('preview');
-      setStatus('Done — ' + last.parts.length + ' parts.', 'ok');
+      setStatus('Done — ' + last.parts.length + ' parts. Saved to your builds.', 'ok');
+      saveHistory();
     } catch (e) {
       handleError(e);
       if (!last.script) { last = prev; $('#codeOut').textContent = last.script; }
@@ -524,7 +558,7 @@
     var b = startBusy('Working out the change…');
     try {
       var msgs = [
-        {role: 'user', content: C.buildPrompt(last.brief || 'the model in the script below', last.detail || detail, last.treatment || $('#treatment').value, !!last.csg, false)},
+        {role: 'user', content: withImage(C.buildPrompt(last.brief || 'the model in the script below', last.detail || detail, last.treatment || $('#treatment').value, !!last.csg, !!last.image), last.image)},
         {role: 'assistant', content: 'SCRIPT:\n```lua\n' + last.script + '\n```\nNOTES:\n' + (last.notes || '')},
         {role: 'user', content: 'Revise the script above: ' + ins + '. Keep everything else the same. Respond in the same SCRIPT:/NOTES: format, with the complete revised script.'}
       ];
@@ -535,27 +569,183 @@
       $('#reviseInput').value = '';
       await showResult(); showTab('preview');
       setStatus('Revision applied — ' + last.parts.length + ' parts.', 'ok');
+      saveHistory();
     } catch (e) { handleError(e); $('#codeOut').textContent = last.script; }
     b.done();
   }
+  if (isStudio) {
   $('#generateBtn').onclick = generate;
   $('#reviseBtn').onclick = revise;
   $('#reviseInput').onkeydown = function(e){ if (e.key === 'Enter') revise(); };
+  $('#brief').onkeydown = function(e){ if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) generate(); };
   $('#stopBtn').onclick = function(){ if (currentJob) api('/api/job?id=' + encodeURIComponent(currentJob), {method: 'POST', body: {cancel: true}}).catch(function(){}); setStatus('Stopping…', '', true); };
   $('#copyBtn').onclick = function(){
     if (!navigator.clipboard) { toast('Copy isn’t available here — open the Script tab and copy manually.', true); return; }
     navigator.clipboard.writeText(last.script).then(function(){ toast('Script copied.'); }, function(){ toast('Couldn’t copy.', true); });
   };
-  function download(name, text){
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([text], {type: 'text/plain'}));
-    a.download = (name || 'brickwright').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 40) + '.lua';
-    document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
-  }
+
   $('#downloadBtn').onclick = function(){ download(last.brief || 'brickwright', last.script); };
+  $('#animateBtn').onclick = function(){
+    if (!last.histId) { toast(last.example ? 'Generate a model first — only your own builds can be animated.' : 'Saving your build… try again in a second.', true); return; }
+    try { sessionStorage.setItem('bw_anim', JSON.stringify({histId: last.histId})); } catch (e) {}
+    location.href = '/animate';
+  };
+  }
+
+  // ------------------------------------------------------------------ reference image (studio)
+  var refImage = null; // data URL, resized
+  function setRef(dataUrl, meta){
+    refImage = dataUrl;
+    $('#refEmpty').hidden = !!dataUrl; $('#refFull').hidden = !dataUrl;
+    if (dataUrl) { $('#refImg').src = dataUrl; $('#refMeta').textContent = meta || ''; }
+    $('#refDrop').classList.toggle('has', !!dataUrl);
+  }
+  function readImage(file){
+    if (!file || !/^image\//.test(file.type)) { toast('That isn’t an image.', true); return; }
+    if (file.size > 15 * 1024 * 1024) { toast('That image is too big (max 15 MB).', true); return; }
+    var url = URL.createObjectURL(file), img = new Image();
+    img.onload = function(){
+      // shrink to fit 1024px so it uploads fast and stays small
+      var k = Math.min(1, 1024 / Math.max(img.width, img.height));
+      var c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+      var q = 0.85, out = c.toDataURL('image/jpeg', q);
+      while (out.length > 700000 && q > 0.4) { q -= 0.15; out = c.toDataURL('image/jpeg', q); }
+      URL.revokeObjectURL(url);
+      setRef(out, c.width + '×' + c.height + ' · ' + Math.round(out.length * 0.75 / 1024) + ' KB');
+    };
+    img.onerror = function(){ URL.revokeObjectURL(url); toast('Couldn’t read that image.', true); };
+    img.src = url;
+  }
+  if (isStudio) {
+    var drop = $('#refDrop');
+    drop.addEventListener('click', function(e){ if (e.target.closest('#refRemove')) return; $('#refFile').click(); });
+    drop.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#refFile').click(); } });
+    $('#refFile').onchange = function(){ readImage(this.files[0]); this.value = ''; };
+    $('#refRemove').onclick = function(e){ e.stopPropagation(); setRef(null); };
+    ['dragenter', 'dragover'].forEach(function(ev){ drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add('over'); }); });
+    ['dragleave', 'drop'].forEach(function(ev){ drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove('over'); }); });
+    drop.addEventListener('drop', function(e){ var f = e.dataTransfer && e.dataTransfer.files[0]; if (f) readImage(f); });
+    document.addEventListener('paste', function(e){
+      var items = (e.clipboardData && e.clipboardData.items) || [];
+      for (var i = 0; i < items.length; i++) if (items[i].type.indexOf('image/') === 0) { readImage(items[i].getAsFile()); e.preventDefault(); return; }
+    });
+  }
+  var enhancing = false;
+  async function enhance(){
+    if (busy || enhancing) return;
+    var idea = $('#brief').value.trim();
+    if (!idea && !refImage) { setStatus('Type a quick idea first (like “dragon”), then press Enhance.', 'err'); $('#brief').focus(); return; }
+    if (!session()) { handleError({code: 'login'}); return; }
+    enhancing = true; var btn = $('#enhanceBtn'); btn.disabled = true; btn.classList.add('working');
+    var before = $('#brief').value;
+    setStatus('Enhancing your prompt…', '', true);
+    try {
+      var job = await api('/api/generate', {method: 'POST', body: {kind: 'enhance', prompt: [{role: 'user', content: withImage('Idea: ' + (idea || '(see the image)'), refImage)}]}});
+      refreshMe();
+      var text = '', from = 0;
+      for (;;) {
+        await new Promise(function(r){ setTimeout(r, 700); });
+        var st = await api('/api/job?id=' + encodeURIComponent(job.jobId) + '&from=' + from);
+        if (st.text) { text += st.text; from = st.length; var shown = stripThink(text).trim(); if (shown) $('#brief').value = shown; }
+        if (st.status === 'done') break;
+        if (st.status === 'error' || st.status === 'cancelled') throw {message: (st.error || 'Couldn’t enhance it.') + (st.refunded ? ' Credits refunded.' : '')};
+      }
+      var out = stripThink(text).replace(/^["'\s]+|["'\s]+$/g, '').replace(/^\*+|\*+$/g, '');
+      $('#brief').value = out || before;
+      setStatus('Prompt enhanced — tweak it if you like, then press Generate.', 'ok');
+      $('#brief').dataset.undo = before;
+      $('#undoEnhance') && ($('#undoEnhance').hidden = false);
+    } catch (e) { $('#brief').value = before; handleError(e); }
+    enhancing = false; btn.disabled = false; btn.classList.remove('working'); refreshMe();
+  }
+  if (isStudio) {
+    $('#enhanceBtn').onclick = enhance;
+    $('#brief').insertAdjacentHTML('afterend', '<button class="link-btn undo-enhance" id="undoEnhance" type="button" hidden>↩ Undo enhance</button>');
+    $('#undoEnhance').onclick = function(){ if ($('#brief').dataset.undo != null) $('#brief').value = $('#brief').dataset.undo; this.hidden = true; setStatus('Back to your original prompt.', ''); };
+    $('#brief').addEventListener('input', function(){ $('#undoEnhance').hidden = true; });
+  }
+  function withImage(text, img){
+    return img ? [{type: 'text', text: text}, {type: 'image_url', image_url: {url: img}}] : text;
+  }
+
+  // ------------------------------------------------------------------ your history (studio)
+  var histNext = 0, histSignedIn = null;
+  function smallThumb(parts){
+    var big = snapshotOf(parts); if (!big) return Promise.resolve('');
+    return new Promise(function(res){
+      var img = new Image();
+      img.onload = function(){
+        var c = document.createElement('canvas'); c.width = 240; c.height = 180;
+        c.getContext('2d').drawImage(img, 0, 0, 240, 180);
+        res(c.toDataURL('image/jpeg', 0.72));
+      };
+      img.onerror = function(){ res(''); };
+      img.src = big;
+    });
+  }
+  async function saveHistory(){
+    if (!session() || !last.script || last.example) return;
+    try {
+      var thumb = await smallThumb(last.parts);
+      var saved = await api('/api/history', {method: 'POST', body: {brief: last.brief, detail: last.detail, script: last.script, notes: last.notes, parts: last.parts.length, thumb: thumb}});
+      last.histId = saved.id;
+      loadHistory(true);
+    } catch (e) { /* history is best-effort */ }
+  }
+  function histCard(it){
+    return '<div class="card hist-card" data-hist="' + esc(it.id) + '" role="button" tabindex="0">' +
+      '<div class="thumb">' + (it.thumb ? '<img loading="lazy" alt="" src="' + esc(it.thumb) + '">' : '<span>no preview</span>') + '</div>' +
+      '<div class="meta"><h3 title="' + esc(it.brief) + '">' + esc(it.brief || 'Untitled build') + '</h3><div class="sub"><span>' + ago(it.created) + ' · ' + (it.parts || 0) + ' parts</span><span class="badge">' + esc(it.detail) + '</span></div></div>' +
+      '<button class="hist-del" data-hist-del="' + esc(it.id) + '" aria-label="Delete from history" title="Delete">×</button></div>';
+  }
+  async function loadHistory(reset){
+    var grid = $('#historyGrid'); if (!grid) return;
+    if (!session()) {
+      histSignedIn = false;
+      grid.innerHTML = '<div class="empty"><a href="#" data-action="signin">Sign in</a> and every build you make is saved here, so you can come back to it any time.</div>';
+      $('#historyMore').hidden = true; $('#historyCount').hidden = true; return;
+    }
+    histSignedIn = true;
+    if (reset) { histNext = 0; grid.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>'; }
+    try {
+      var j = await api('/api/history?offset=' + histNext);
+      if (reset) grid.innerHTML = '';
+      if (!j.items.length && reset) grid.innerHTML = '<div class="empty">No builds yet — generate your first one above and it’ll show up here.</div>';
+      grid.insertAdjacentHTML('beforeend', j.items.map(histCard).join(''));
+      histNext = j.next; $('#historyMore').hidden = j.next == null;
+      $('#historyCount').hidden = !j.total; $('#historyCount').textContent = j.total + (j.total === 1 ? ' build' : ' builds');
+    } catch (e) { if (reset) grid.innerHTML = '<div class="empty">Couldn’t load your builds right now.</div>'; }
+  }
+  async function openHistory(id){
+    if (busy) { toast('Wait for the current build to finish first.', true); return; }
+    try {
+      var it = await api('/api/history?id=' + encodeURIComponent(id));
+      last = {script: it.script, notes: it.notes || '', brief: it.brief, detail: it.detail || 'standard', parts: [], histId: id};
+      $('#brief').value = it.brief || '';
+      window.scrollTo({top: 0, behavior: 'smooth'});
+      await showResult(); showTab('preview');
+      setStatus('Loaded from your builds — copy it, share it, or ask for a change.', 'ok');
+    } catch (e) { toast(e.message, true); }
+  }
+  if (isStudio) {
+    $('#historyGrid').addEventListener('click', async function(e){
+      var del = e.target.closest('[data-hist-del]');
+      if (del) {
+        e.stopPropagation();
+        var id = del.getAttribute('data-hist-del'), card = del.closest('.hist-card');
+        if (!del.classList.contains('armed')) { del.classList.add('armed'); del.textContent = 'Delete?'; setTimeout(function(){ del.classList.remove('armed'); del.textContent = '×'; }, 2500); return; }
+        try { await api('/api/history?id=' + encodeURIComponent(id), {method: 'DELETE'}); card.remove(); toast('Removed from your builds.'); loadHistory(true); } catch (x) { toast(x.message, true); }
+        return;
+      }
+      var c = e.target.closest('[data-hist]'); if (c) openHistory(c.getAttribute('data-hist'));
+    });
+    $('#historyGrid').addEventListener('keydown', function(e){ var c = e.target.closest('[data-hist]'); if (c && e.key === 'Enter') openHistory(c.getAttribute('data-hist')); });
+    on('#historyMore', 'onclick', function(){ loadHistory(false); });
+  }
 
   // ------------------------------------------------------------------ share to Explore
-  $('#shareBtn').onclick = function(){
+  if (isStudio) $('#shareBtn').onclick = function(){
     if (!session()) { openLogin(); return; }
     if (last.example || !last.parts.length) { toast('Generate a model first.', true); return; }
     var title = (last.brief || '').split(/[,.]/)[0].slice(0, 50);
@@ -572,10 +762,11 @@
         var thumb = snapshotOf(last.parts);
         var j = await api('/api/builds', {method: 'POST', body: {title: $('#sTitle').value, name: $('#sName').value, brief: $('#sBrief').checked ? last.brief : '',
           script: last.script, detail: last.detail, parts: last.parts.length, thumb: thumb}});
-        closeModal(); toast('Shared! It’s live in Explore.');
-        loadExplore(true);
-        location.hash = '#explore';
-        void j;
+        closeModal();
+        var b2 = openModal('<h3>Shared! 🎉</h3><p>Your build is live in Explore. Anyone with the link can view, copy and remix it.</p>' +
+          '<div class="field"><input id="shLink" readonly value="' + esc(location.origin + '/b/' + j.id) + '"></div>' +
+          '<div class="btn-row"><button class="btn" id="shCopy">Copy link</button><a class="btn btn-primary" href="/b/' + esc(j.id) + '">View in Explore</a></div>');
+        $('#shCopy', b2).onclick = function(){ navigator.clipboard && navigator.clipboard.writeText($('#shLink').value).then(function(){ toast('Link copied.'); }); };
       } catch (e) { $('#sErr').textContent = e.message; btn.disabled = false; }
     };
   };
@@ -588,30 +779,44 @@
       '<div class="meta"><h3>' + esc(it.title) + '</h3><div class="sub"><span>by ' + esc(it.name) + ' · ' + ago(it.created) + '</span>' +
       '<span class="likes"><svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-10-9.3C.4 8.4 2.3 4.5 6 4.5c2.2 0 3.6 1.2 4.4 2.4h3.2C14.4 5.7 15.8 4.5 18 4.5c3.7 0 5.6 3.9 4 7.2C19.5 16.4 12 21 12 21z"/></svg>' + it.likes + '</span></div></div></button>';
   }
-  async function loadExplore(reset){
-    var grid = $('#exploreGrid');
-    if (reset) { exploreNext = 0; grid.innerHTML = ''; }
+  async function loadExplore(reset, limitTo){
+    var grid = $('#exploreGrid'); if (!grid) return;
+    if (reset) { exploreNext = 0; exploreItems = []; grid.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>'; }
     try {
       var j = await api('/api/builds?sort=' + exploreSort + '&offset=' + exploreNext);
-      if (reset && !j.items.length) grid.innerHTML = '<div class="empty">No shared builds yet — generate something and hit <b>Share to Explore</b> to be the first.</div>';
-      grid.insertAdjacentHTML('beforeend', j.items.map(cardHtml).join(''));
-      exploreNext = j.next; $('#loadMore').hidden = j.next == null;
+      exploreItems = exploreItems.concat(limitTo ? j.items.slice(0, limitTo) : j.items);
+      renderGrid();
+      exploreNext = j.next;
+      if ($('#loadMore')) $('#loadMore').hidden = limitTo || j.next == null;
+      var cnt = $('#buildCount'); if (cnt) cnt.textContent = exploreItems.length + (j.next != null ? '+' : '') + ' builds';
     } catch (e) {
       if (reset) grid.innerHTML = '<div class="empty">Couldn’t load Explore right now.</div>';
     }
   }
+  var exploreQuery = '', exploreItems = [];
+  function renderGrid(){
+    var grid = $('#exploreGrid'); if (!grid) return;
+    var q = exploreQuery.toLowerCase();
+    var items = q ? exploreItems.filter(function(it){ return (it.title + ' ' + it.name).toLowerCase().indexOf(q) >= 0; }) : exploreItems;
+    grid.innerHTML = items.length ? items.map(cardHtml).join('')
+      : '<div class="empty">' + (q ? 'No builds match “' + esc(exploreQuery) + '” yet.' : 'No shared builds yet — make one in the <a href="/studio">Studio</a> and hit <b>Share</b> to be the first.') + '</div>';
+  }
+  if ($('#exploreGrid')) {
   $$('#exploreSort button').forEach(function(b){ b.onclick = function(){
     exploreSort = b.getAttribute('data-sort');
     $$('#exploreSort button').forEach(function(x){ x.classList.toggle('active', x === b); });
     loadExplore(true);
   }; });
-  $('#loadMore').onclick = function(){ loadExplore(false); };
+  on('#loadMore', 'onclick', function(){ loadExplore(false); });
   $('#exploreGrid').addEventListener('click', function(e){ var c = e.target.closest('[data-build]'); if (c) openBuild(c.getAttribute('data-build')); });
+  on('#exploreSearch', 'oninput', function(){ exploreQuery = this.value.trim(); renderGrid(); });
+  }
 
   async function openBuild(id){
     var viewer = null;
+    if (PAGE === 'explore' && location.pathname.indexOf('/b/') !== 0) history.replaceState(null, '', '/b/' + encodeURIComponent(id));
     var b = openModal('<div class="build-view"><div class="viewer" id="bViewer"><div class="viewer-msg">Loading…</div></div><div class="build-side" id="bSide"></div></div>', true,
-      function(){ if (viewer) viewer.destroy(); });
+      function(){ if (viewer) viewer.destroy(); if (location.pathname.indexOf('/b/') === 0) history.replaceState(null, '', '/explore'); });
     var bd;
     try { bd = await api('/api/builds?id=' + encodeURIComponent(id)); }
     catch (e) { $('#bSide', b).innerHTML = '<p class="err">' + esc(e.message) + '</p>'; return; }
@@ -624,7 +829,7 @@
       (bd.brief ? '<span class="label">Prompt</span><div class="brief">' + esc(bd.brief) + '</div>' : '') +
       '<div class="build-actions">' +
       '<button class="btn like-btn' + (bd.liked ? ' on' : '') + '" id="bLike">♥ <span>' + bd.likes + '</span></button>' +
-      '<button class="btn" id="bCopy">Copy script</button><button class="btn" id="bDl">Download</button>' +
+      '<button class="btn" id="bCopy">Copy script</button><button class="btn" id="bDl">Download</button><button class="btn" id="bLink">Copy link</button>' +
       '<button class="btn btn-primary" id="bRemix">Remix in studio</button>' +
       (bd.mine ? '<button class="btn btn-ghost" id="bDel">Delete</button>' : '') + '</div>';
     $('#bLike', side).onclick = async function(){
@@ -634,14 +839,14 @@
     };
     $('#bCopy', side).onclick = function(){ navigator.clipboard && navigator.clipboard.writeText(bd.script).then(function(){ toast('Script copied.'); }); };
     $('#bDl', side).onclick = function(){ download(bd.title, bd.script); };
-    $('#bRemix', side).onclick = async function(){
-      last = {script: bd.script, notes: 'Remixed from “' + bd.title + '” by ' + bd.name + '. Ask for changes below.', brief: bd.brief || bd.title, detail: bd.detail || 'standard', parts: []};
-      closeModal(); location.hash = '#create';
-      await showResult(); showTab('preview'); setStatus('Remix loaded — describe a change and press Revise.', 'ok'); $('#reviseInput').focus();
+    $('#bLink', side).onclick = function(){ navigator.clipboard && navigator.clipboard.writeText(location.origin + '/b/' + id).then(function(){ toast('Link copied.'); }); };
+    $('#bRemix', side).onclick = function(){
+      try { sessionStorage.setItem('bw_remix', JSON.stringify({script: bd.script, title: bd.title, name: bd.name, brief: bd.brief, detail: bd.detail})); } catch (e) {}
+      location.href = '/studio';
     };
     if (bd.mine) $('#bDel', side).onclick = async function(){
       if (!confirm('Delete this build from Explore? This can’t be undone.')) return;
-      try { await api('/api/builds?id=' + encodeURIComponent(id), {method: 'DELETE'}); closeModal(); toast('Deleted.'); loadExplore(true); }
+      try { await api('/api/builds?id=' + encodeURIComponent(id), {method: 'DELETE'}); closeModal(); toast('Deleted.'); if ($('#exploreGrid')) loadExplore(true); }
       catch (e) { toast(e.message, true); }
     };
   }
@@ -685,17 +890,32 @@
     ['What happens when I share to Explore?', 'Your build’s script, title, the name you choose and (if you leave it on) your prompt become public. Anyone can view, copy and remix it. You can delete your own builds anytime.'],
     ['Why only Gmail sign-in?', 'Every account gets free credits, so we keep sign-up to one verified inbox per person to stop people farming accounts.'],
   ];
-  $('#faqList').innerHTML = faqs.map(function(f){ return '<details><summary>' + esc(f[0]) + '</summary><p>' + esc(f[1]) + '</p></details>'; }).join('');
-  $('#year').textContent = new Date().getFullYear();
+  if ($('#faqList')) $('#faqList').innerHTML = faqs.map(function(f){ return '<details><summary>' + esc(f[0]) + '</summary><p>' + esc(f[1]) + '</p></details>'; }).join('');
+  if ($('#year')) $('#year').textContent = new Date().getFullYear();
+  $$('.nav-links a').forEach(function(a){ if (a.getAttribute('data-page') === PAGE) a.classList.add('active'); });
 
   // ------------------------------------------------------------------ boot
+  window.BW = {api: api, Viewer: Viewer, runScript: runScript, session: session, openLogin: openLogin, toast: toast, esc: esc, ago: ago,
+    stripThink: stripThink, download: download, refreshMe: refreshMe, getMe: function(){ return me; }, openModal: openModal, closeModal: closeModal};
   (async function(){
-    renderStudioControls();
-    var hero = new Viewer($('#heroViewer'), {autoRotate: true});
-    studio = new Viewer($('#studioViewer'));
-    fetch('/showcase.lua').then(function(r){ return r.ok ? r.text() : C.EXAMPLE_SCRIPT; }).catch(function(){ return C.EXAMPLE_SCRIPT; })
-      .then(runScript).then(function(ex){ hero.setParts(ex.parts); });
-    await showResult();
+    if ($('#heroViewer')) {
+      var hero = new Viewer($('#heroViewer'), {autoRotate: true});
+      fetch('/showcase.lua').then(function(r){ return r.ok ? r.text() : C.EXAMPLE_SCRIPT; }).catch(function(){ return C.EXAMPLE_SCRIPT; })
+        .then(runScript).then(function(ex){ hero.setParts(ex.parts); });
+    }
+    if (isStudio) {
+      renderStudioControls();
+      studio = new Viewer($('#studioViewer'));
+      try { var ex = await fetch('/example.lua'); if (ex.ok) last.script = await ex.text(); } catch (e) {}
+      var rm = null; try { rm = JSON.parse(sessionStorage.getItem('bw_remix') || 'null'); sessionStorage.removeItem('bw_remix'); } catch (e) {}
+      if (rm && rm.script) {
+        last = {script: rm.script, notes: 'Remixed from “' + rm.title + '” by ' + rm.name + '. Ask for changes below.', brief: rm.brief || rm.title, detail: rm.detail || 'standard', parts: []};
+        if (rm.brief) $('#brief').value = rm.brief;
+      }
+      var qp = new URLSearchParams(location.search).get('prompt'); if (qp) $('#brief').value = qp;
+      await showResult();
+      if (rm && rm.script) { setStatus('Remix loaded — describe a change and press Revise.', 'ok'); $('#reviseInput').focus(); }
+    }
     var q = new URLSearchParams(location.search);
     if (q.get('checkout')) {
       history.replaceState(null, '', location.pathname + '#pricing');
@@ -703,6 +923,11 @@
     }
     await refreshMe();
     loadTurnstile(); // warm up the captcha so the sign-in box is ready instantly
-    loadExplore(true);
+    document.dispatchEvent(new Event('bw:ready'));
+    if ($('#exploreGrid')) {
+      loadExplore(true, PAGE === 'home' ? 8 : 0);
+      var m = /^\/b\/([^\/?#]+)/.exec(location.pathname) || [null, new URLSearchParams(location.search).get('b')];
+      if (m[1]) openBuild(decodeURIComponent(m[1]));
+    }
   })();
 })();

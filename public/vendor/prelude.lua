@@ -838,6 +838,8 @@ _G.shared = shared
 local function fmt(n) if n ~= n then return "0" end return string.format("%.4g", n) end
 local SURF = {"RightSurface","LeftSurface","TopSurface","BottomSurface","BackSurface","FrontSurface"}
 local function surfFlags(p)
+	local mv = p.MaterialVariant
+	if type(mv) == "string" and (mv:find("Stud") or mv:find("Universal")) then return "111111" end
 	local s = {}
 	for i, f in ipairs(SURF) do
 		local v = p[f]
