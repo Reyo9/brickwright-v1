@@ -2,7 +2,7 @@
 // marks the job done/failed, and refunds the credits if no complete script came back.
 import { CONFIG } from '../lib/config.mjs';
 import { redis, refund, refundJob, internalToken } from '../lib/core.mjs';
-import { COACH as BUILD_COACH } from '../lib/coach.mjs';
+import { coachFor } from '../lib/coach.mjs';
 import { TASKS } from '../lib/tasks.mjs';
 
 async function setJob(id, patch) {
@@ -24,7 +24,8 @@ export default async (req) => {
   if (!rawJob || !rawReq) return;
   const job = JSON.parse(rawJob);
   const { messages, maxTokens, task } = JSON.parse(rawReq);
-  const COACH = task ? TASKS[task] : BUILD_COACH;
+  const briefText = messages.filter((m) => m.role === 'user').map((m) => typeof m.content === 'string' ? m.content : (m.content || []).map((c) => c.text || '').join(' ')).join(' ').slice(0, 4000);
+  const COACH = task ? TASKS[task] : coachFor(briefText);
   await setJob(id, { status: 'running' });
   const t0 = Date.now();
   const log = (...a) => console.log('[build ' + id.slice(0, 8) + ' +' + Math.round((Date.now() - t0) / 1000) + 's]', ...a);

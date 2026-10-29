@@ -9,7 +9,7 @@
 [[headers]]
   for = "/vendor/*"
   [headers.values]
-    Cache-Control = "public, max-age=604800"
+    Cache-Control = "public, max-age=3600"
 
 [[redirects]]
   from = "/studio"

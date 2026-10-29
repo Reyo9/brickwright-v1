@@ -839,7 +839,7 @@ local function fmt(n) if n ~= n then return "0" end return string.format("%.4g",
 local SURF = {"RightSurface","LeftSurface","TopSurface","BottomSurface","BackSurface","FrontSurface"}
 local function surfFlags(p)
 	local mv = p.MaterialVariant
-	if type(mv) == "string" and (mv:find("Stud") or mv:find("Universal")) then return "111111" end
+	if type(mv) == "string" and (mv:find("Stud") or mv:find("Universal") or mv:find("Weld") or mv:find("Glue")) then return "111111" end
 	local s = {}
 	for i, f in ipairs(SURF) do
 		local v = p[f]
@@ -857,11 +857,11 @@ local function shapeCode(cls, p)
 	end
 	return "b"
 end
-local function emitPiece(out, code, size, cf, color, transp, mat, flags, name)
+local function emitPiece(out, code, size, cf, color, transp, mat, flags, name, variant)
 	local c = color or c3(0.64, 0.64, 0.65)
 	out[#out+1] = table.concat({code, fmt(size[1]), fmt(size[2]), fmt(size[3]),
 		fmt(cf[1]), fmt(cf[2]), fmt(cf[3]), fmt(cf[4]), fmt(cf[5]), fmt(cf[6]), fmt(cf[7]), fmt(cf[8]), fmt(cf[9]), fmt(cf[10]), fmt(cf[11]), fmt(cf[12]),
-		fmt(c[1]), fmt(c[2]), fmt(c[3]), fmt(transp or 0), (mat and mat.Name) or "Plastic", flags or "000000", (tostring(name or ""):gsub("[,\n\r\t]", " "))}, ",")
+		fmt(c[1]), fmt(c[2]), fmt(c[3]), fmt(transp or 0), (mat and mat.Name) or "Plastic", flags or "000000", (tostring(name or ""):gsub("[,\n\r\t]", " ")), (tostring(variant or ""):gsub("[,\n\r\t]", " "))}, ",")
 end
 function __export(ok, err)
 	local out = {}
@@ -883,7 +883,7 @@ function __export(ok, err)
 					if tr < 0.98 then emitPiece(out, code, pc.size, cmul(delta, pc.cf), p.Color or pc.color, tr, p.Material or pc.mat, "000000", p.Name or rawget(o, "Name")) shown = shown + 1 end
 				end
 			elseif tr < 0.98 and p.Size and p.CFrame then
-				emitPiece(out, shapeCode(cls, p), p.Size, p.CFrame, p.Color, tr, p.Material, surfFlags(p), p.Name or rawget(o, "Name"))
+				emitPiece(out, shapeCode(cls, p), p.Size, p.CFrame, p.Color, tr, p.Material, surfFlags(p), p.Name or rawget(o, "Name"), type(p.MaterialVariant) == "string" and p.MaterialVariant or "")
 				shown = shown + 1
 			end
 		end

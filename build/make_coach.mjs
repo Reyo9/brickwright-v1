@@ -4,8 +4,10 @@ import fs from 'fs';
 const root = new URL('..', import.meta.url).pathname;
 const cottage = fs.readFileSync(root + 'build/examples/cottage.lua', 'utf8').trim();
 const guide = fs.readFileSync(root + 'build/examples/hired_prompt.txt', 'utf8').trim();
-const truck = fs.readFileSync(root + 'build/examples/truck.lua', 'utf8').trim();
-const hydra = fs.readFileSync(root + 'public/showcase.lua', 'utf8').trim();
+const truck = fs.readFileSync(root + 'build/examples/supercar.lua', 'utf8').trim();
+const zombie = fs.readFileSync(root + 'build/examples/zombie.lua', 'utf8').trim();
+const pancake = fs.readFileSync(root + 'build/examples/pancake.lua', 'utf8').trim();
+const hydra = fs.readFileSync(root + 'build/examples/dragon.lua', 'utf8').trim();
 const RULES = `You are an expert Roblox builder. Quality bar: every build must look like a hand-made showcase model, not a rough sketch.
 
 HARD RULES (a build that breaks one of these is rejected):
@@ -74,23 +76,85 @@ HARD RULES (a build that breaks one of these is rejected):
     end
   And put this sweep right BEFORE model.Parent = workspace (it overrides your helper's surfaces, so you don't have to think about it):
     for _, d in ipairs(model:GetDescendants()) do
-        if d:IsA("BasePart") and d.Material ~= Enum.Material.Neon and d.Material ~= Enum.Material.Glass then
+        local thinGlow = d:IsA("BasePart") and (d.Material == Enum.Material.Neon or d.Material == Enum.Material.Glass) and math.min(d.Size.X, d.Size.Y, d.Size.Z) <= 2.2
+        if d:IsA("BasePart") and not thinGlow then
             if studsLoaded then
                 local small = math.min(d.Size.X, d.Size.Y, d.Size.Z) < 1 and math.max(d.Size.X, d.Size.Y, d.Size.Z) < 3
                 d.Material = Enum.Material.Glacier
-                if (d.MaterialVariant or "") == "" then d.MaterialVariant = small and "2022 Small Stud" or "2022 Universal" end
+                local v = d.MaterialVariant or ""
+                if v == "" or not MS:FindFirstChild(v) then d.MaterialVariant = small and "2022 Small Stud" or "2022 Universal" end
                 for _, f in ipairs({"Top","Bottom","Left","Right","Front","Back"}) do d[f .. "Surface"] = Enum.SurfaceType.Smooth end
             else
                 for _, f in ipairs({"Top","Bottom","Left","Right","Front","Back"}) do d[f .. "Surface"] = Enum.SurfaceType.Studs end
             end
         end
+        -- wheel check: a wheel's axle is its local X; if a wheel/tyre/hub ended up lying flat like a coin, stand it back up
+        if d:IsA("Part") and d.Shape == Enum.PartType.Cylinder then
+            local n = d.Name:lower()
+            if (n:find("wheel") or n:find("tyre") or n:find("tire") or n:find("hub")) and not n:find("steer") and math.abs(d.CFrame.RightVector.Y) > 0.7 then
+                d.CFrame = CFrame.new(d.Position)
+            end
+        end
     end
-  You may set d.MaterialVariant = "2022 Big Stud" yourself on big chunky parts (spikes, bodies, ground slabs) for bolder studs. The header comment must say the script must run from the Studio command bar (game:GetObjects only works there).
-28. Before answering, mentally walk through every part: is its bottom touching something? Is it inside a wall by accident? Fix it.
+  Neon/Glass stays glowing only when THIN (lenses, strips, core bars ≤ 2.2 thick); a fat Neon block gets studded like everything else. Name wheels "Wheel…"/"Tyre…" so the wheel check can find them.
+  Give your make() helper a variant argument (make(kind, name, size, cframe, colour, variant)) so picking a texture is one word per part. For a flat disc (plate, pancake, coin, pond) use a disc() helper: Vector3.new(thickness, d, d) with CFrame.Angles(0, 0, math.rad(90)).
+  Liquids: a drip is a thin tall Part hanging from the rim with a Ball bead at its bottom end; long drips end in a thin flat puddle disc on the surface below.
+  Header comment: also list SUBJECT TYPE and SIGNATURE FEATURES (the 3–5 things that make it recognisable) and make sure every signature feature is in the build. End the script by printing the part count and bounding-box size.
+  PICK A VARIANT PER AREA (set d.MaterialVariant on the part when you create it — the sweep keeps it). Only these five names exist: "2022 Universal" (default bricks, walls, bodies), "2022 Big Stud" (big chunky or glossy/soft masses: ground slabs, spikes, syrup, butter, cushions, big creature bodies), "2022 Small Stud" (small details, trims, eyes, buttons, thin rails), "2022 Weld" (soft organic or baked surfaces: bread, cake, pancakes, cookies, wood planks, fabric), "2022 Glue" (smooth hard surfaces: plates, ceramic, metal panels, screens, polished stone). Mixing is OPTIONAL and depends on the model: plain brick builds (houses, castles, vehicles, most creatures) can be all "2022 Universal" (plus Small Stud on tiny parts, which the sweep does for you). Only mix variants when the model has areas that are really different materials (food, furniture with cushions, a plate under a cake, metal vs wood) — then 2–3 variants max. The header comment must say the script must run from the Studio command bar (game:GetObjects only works there).
+28. SKELETON-FIRST HELPERS (use them for anything posed, curved or organic — creatures, characters, robots, trees, ropes):
+  - bone(name, a, b, w, h, colour, variant): a Part of size (w, h, |b-a|) at CFrame.lookAt((a+b)/2, b) — length runs along local Z between two joint points, so a pose is just a list of joint positions. Return cf, len so belly plates/spikes can hang off it (cf * CFrame.new(0, -h/2-0.2, 0)).
+  - joint(name, at, d, ...): a Ball of diameter d at every bend hides the seam where two angled bones meet. Elbows, knees, shoulders, hips, trunk bends, rope bends.
+  - spine(name, pts, widths, heights, ...): a whole neck+body+tail as ONE flowing list of points with tapering width/height tables, a ball at each bend, an optional lighter belly strip underneath and wedge spikes along the top.
+  - mir(v, sx) = Vector3.new(v.X*sx, v.Y, v.Z): define one side's legs/wings/arms as point tables and loop sx = -1, 1.
+  - membrane(name, pivot, a, b): a 0.4-thick plate fanning from a pivot to the edge between a and b, oriented with CFrame.fromMatrix(center, xAxis, yAxis) where zAxis = (mid-pivot).Unit and xAxis = (b-a) with its zAxis part removed. Wings = arm bones + finger bones from the wrist + one membrane between each pair of fingers.
+  - Arcs (rope handles, halos, rings, arches): compute points on the curve (e.g. x = -R*cos(a), y = Y0 + RISE*sin(a) for a = 0..pi in 6 steps), then put a bone between each pair (+0.2 length overlap) and a ball at each bend. Halo/ring: N points on a circle, each segment CFrame.lookAt(pos, pos + tangent) with length 2*R*sin(pi/N)+0.3.
+  - Gnarled trunks / branches: a zig-zag list of points with shrinking widths, bars between them, knot balls at a couple of bends, branch bars ending under flat layered leaf pads (a pad plus a smaller lighter cap on top).
+  - Attach detail to its parent with relative CFrames (head.CFrame * CFrame.new(...), headCF:PointToWorldSpace(...)) so eyes, panels and horns stay on the face.
+  - glow(p): set Neon AND clear MaterialVariant = "" — only for small/thin lights (eyes, buttons, antenna tips, halo). Put ONE PointLight in one glowing part (Range 10-14, Brightness 2), not one per part.
+  - Wheels: wheel(name, x, z, d, w) = an upright Cylinder Vector3.new(w, d, d) at CFrame.new(x, d/2, z) with NO rotation (a Cylinder's axis is already X), plus a thin hub disc and a rim ring on the outer face. Name them "Wheel…" so the wheel check catches mistakes.
+  - Stripes / trims along a slope (hood, fastback, roof ramp): ang = math.atan(rise/run), len = sqrt(rise²+run²), then wedgeCF * CFrame.new(x, 0, 0) * CFrame.Angles(-ang, 0, 0) * CFrame.new(0, 0.15, 0).
+  - Printed decals on an upright face (logos, signs, clock faces): faceDisc = a Cylinder turned CFrame.Angles(0, math.rad(90), 0) so its axis points out of the face; layer discs 0.2 apart (base, colour, details) and put lettering as thin bars. Print on the back too if the back is visible.
+  - Toppings / scattered details on a disc (pepperoni, rivets, flowers, buttons): loop i = 1..N, a = (i-1)/N * 2π (offset alternate rings by half a step), place at (cos a * R, top, sin a * R), sometimes yaw each piece by -a + 45° so they don't all line up.
+  - Triangle slices / flat triangles: two mirrored Wedges laid flat side by side (CFrame.Angles(0, 0, ±90°)), with a bar along the wide end.
+  - Open lids / doors: build them already in their open pose (lid standing up on the hinge edge), with the inside faces lined in a lighter colour.
+  - Tall plants (beanstalks, vines, cacti): a stepped stack of segments whose x follows lean*t + bow*sin(t*π) and whose width tapers base→top, a darker crown near the top, leaves as blades tilted up 20-50° alternating left/right with a tip and a lighter mid rib, hanging bead chains (balls in a column) for pods/berries, flared root blocks at the base.
+  - Many-headed creatures: write ONE head(name, at, yaw, open, tilt, hornType) function and call it per head with different jaw opening, brow tilt and horn table so each head has its own expression. Folded wings: membranes as thin vertical plates hung under each wing bone, all pulled onto one plane x = ±MEM_X so the wing reads as one sheet.
+  - Upright characters: hips → belt → chest → neck → head as a vertical stack of boxes; arms and legs from bone()/joint() with a DIFFERENT pose per side; hands placed with CFrame.lookAt(wrist, wrist + dir) and fingers off the hand; faces built from flat 0.2 plates (sockets, eyes, brow, mouth, teeth) on the front of the head.
+  - Hard-surface items (chests, CRT monitors, toolboxes, crates): plank bands in alternating tones, an overhanging lid, metal corner brackets as thin plates on both faces, ball rivets, barrel hinges at the back, a clasp on the front, skids underneath. Monitors/machines: a deep case with a rear hump, a thick bezel frame standing proud of the front, a recessed Neon screen with dark text-line bars on it, top cooling ribs and side vent slots, buttons and an LED.
+29. Before answering, mentally walk through every part: is its bottom touching something? Is it inside a wall by accident? Fix it.
 
-Below are three example builds at the quality expected. Do NOT copy their subjects — copy their care: helpers, layer variables, parts resting on parts.`;
+`;
+const ex = (f) => fs.readFileSync(root + 'build/examples/' + f + '.lua', 'utf8').trim();
+// Example library: every paid/hand-made build. Each request gets the 3 best matches for its brief.
+const EXAMPLES = [
+  { id: 'cottage', label: 'a building with props', tags: 'house|home|cottage|cabin|shop|store|building|castle|tower|church|barn|hut|tavern|inn|school|hospital|station|temple|mansion|windmill|lighthouse|village|town|room|interior|furniture|bed|table|chair', code: ex('cottage') },
+  { id: 'supercar', label: 'a vehicle — copy its wheel() helper for every wheeled build', tags: 'car|vehicle|truck|bus|van|kart|race|racing|jeep|taxi|police|tank|tractor|wheel|bike|motor|train|cart|wagon|plane|jet|boat|ship|sub', code: ex('supercar') },
+  { id: 'dragon', label: 'a posed creature, skeleton first', tags: 'dragon|wing|bird|eagle|phoenix|griffin|bat|angel|creature|beast|monster|dino|raptor|wyvern|serpent|snake', code: ex('dragon') },
+  { id: 'hydra3', label: 'a many-headed creature with folded wings', tags: 'hydra|multi|three.?head|heads|cerberus|beast|monster|dragon|dino|lizard|reptile|croc', code: ex('hydra3') },
+  { id: 'zombie', label: 'an upright character, limbs from bone()/joint()', tags: 'zombie|character|person|human|man|woman|guy|girl|boy|noob|npc|knight|soldier|ninja|pirate|wizard|warrior|skeleton|undead|monster|villager|figure|statue|player|avatar', code: ex('zombie') },
+  { id: 'robot', label: 'an upright robot/character', tags: 'robot|mech|android|cyborg|droid|bot|character|toy|golem|machine', code: ex('robot') },
+  { id: 'pancake', label: 'a food prop scene with per-area textures — only mix textures when the subject has really different materials', tags: 'pancake|food|cake|burger|donut|cookie|dessert|breakfast|plate|meal|bread|sandwich|ice.?cream|cupcake|pie|candy|sweet|fruit|drink|cup|mug', code: ex('pancake') },
+  { id: 'pizza', label: 'a food arrangement in a box with printed logos', tags: 'pizza|box|food|takeaway|package|crate|gift|present|sign|logo|poster|menu|slice|plate', code: ex('pizza') },
+  { id: 'toolbox', label: 'a hard-surface item (wood + metal details)', tags: 'toolbox|chest|treasure|crate|box|barrel|tool|hammer|weapon|sword|axe|shield|furniture|cabinet|safe|item|prop', code: ex('toolbox') },
+  { id: 'terminal', label: 'a hard-surface machine with a glowing screen', tags: 'computer|monitor|terminal|tv|screen|arcade|machine|console|pc|laptop|phone|radio|device|gadget|vending|atm|keyboard|tech', code: ex('terminal') },
+  { id: 'bonsai', label: 'a tree in a pot (nature)', tags: 'tree|bonsai|plant|pot|flower|bush|garden|nature|forest|palm|oak|pine|leaf|leaves|cactus', code: ex('bonsai') },
+  { id: 'beanstalk', label: 'a tall plant (nature)', tags: 'beanstalk|vine|plant|stalk|tall|tower|flower|sunflower|cactus|bamboo|grass|tree|nature|jungle|mushroom', code: ex('beanstalk') },
+];
+const BASE = RULES + '\n\n===== BUILD GUIDE (follow it closely; where it disagrees with the response format asked for in the user message, the user message wins — always answer in the SCRIPT:/NOTES: format with the script in a ```lua block; for the stud sweep use rule 27 above) =====\n' + guide + '\n===== END OF BUILD GUIDE =====';
 const out = `// AUTO-GENERATED by build/make_coach.mjs — edit build/examples/*.lua or that script instead.
-export const COACH = ${JSON.stringify(RULES + '\n\n===== BUILD GUIDE (follow it closely; where it disagrees with the response format asked for in the user message, the user message wins — always answer in the SCRIPT:/NOTES: format with the script in a ```lua block; for the stud sweep use rule 27 above) =====\n' + guide + '\n===== END OF BUILD GUIDE =====\n\nEXAMPLE 1 (a building with props):\nSCRIPT:\n```lua\n' + cottage + '\n```\n\nEXAMPLE 2 (a vehicle):\nSCRIPT:\n```lua\n' + truck + '\n```\n\nEXAMPLE 3 (a creature):\nSCRIPT:\n```lua\n' + hydra + '\n```\n\nNow build the user\'s brief at that quality.')};
+const BASE = ${JSON.stringify(BASE)};
+const EXAMPLES = ${JSON.stringify(EXAMPLES.map((e) => ({ ...e })))}.map((e) => ({ ...e, re: new RegExp('\\\\b(' + e.tags + ')', 'i') }));
+const DEFAULT = ['cottage', 'supercar', 'dragon'];
+// The coach prompt for one brief: the rules + the 3 example builds that best match it.
+export function coachFor(brief) {
+  const text = String(brief || '');
+  const scored = EXAMPLES.map((e, i) => ({ e, i, n: (text.match(new RegExp('\\\\b(' + e.tags + ')', 'gi')) || []).length }));
+  const picked = scored.filter((x) => x.n > 0).sort((a, b) => b.n - a.n || a.i - b.i).slice(0, 3).map((x) => x.e);
+  for (const id of DEFAULT) if (picked.length < 3 && !picked.some((e) => e.id === id)) picked.push(EXAMPLES.find((e) => e.id === id));
+  return BASE + '\\n\\nBelow are three example builds at the quality expected, picked for this brief. Do NOT copy their subjects — copy their care: helpers, layer variables, parts resting on parts.' +
+    picked.map((e, k) => '\\n\\nEXAMPLE ' + (k + 1) + ' (' + e.label + '):\\nSCRIPT:\\n\`\`\`lua\\n' + e.code + '\\n\`\`\`').join('') + "\\n\\nNow build the user's brief at that quality.";
+}
+export const COACH = coachFor('');
 `;
 fs.writeFileSync(root + 'netlify/lib/coach.mjs', out);
-console.log('coach.mjs', out.length, 'chars');
+console.log('coach.mjs', out.length, 'chars; per-request prompt', BASE.length, '+ 3 examples');

@@ -70,34 +70,57 @@ window.BWCore = (function(){
     for (var i = 0; i < h.length; i++) hash = (hash * 31 + h.charCodeAt(i)) >>> 0;
     var hue = hash % 360;
     return new THREE.Color('hsl(' + hue + ',45%,55%)').getHex();
-  }  var studTileTexture = null;
-  function getStudTileTexture(){
-    if (studTileTexture) return studTileTexture;
+  }  var studTiles = {};
+  // kind: '' (classic studs), 'weld' (seam grid), 'glue' (soft speckle). Big/Small Stud reuse the stud tile at another scale.
+  function getStudTileTexture(kind){
+    kind = kind || '';
+    if (studTiles[kind]) return studTiles[kind];
     if (typeof document === 'undefined') return null;
     var size = 64;
     var canvas = document.createElement('canvas');
     canvas.width = size; canvas.height = size;
     var ctx = canvas.getContext('2d');
     if (!ctx) return null;
-    // Neutral grey-value tile (multiplied with each part's real color by the material), one stud per tile.
-    // Drawn like Roblox's stud surface: per cell, a small square outline the same color as the brick,
-    // with a thin light edge on the top/left and a thin dark edge on the bottom/right.
     ctx.fillStyle = 'rgb(214,214,214)';
     ctx.fillRect(0, 0, size, size);
-    var a0 = Math.round(size * 0.27), a1 = Math.round(size * 0.73), e = Math.max(2, Math.round(size * 0.06));
-    ctx.fillStyle = 'rgb(255,255,255)';                       // top + left edge (light)
-    ctx.fillRect(a0, a0, a1 - a0, e);
-    ctx.fillRect(a0, a0, e, a1 - a0);
-    ctx.fillStyle = 'rgb(128,128,128)';                       // bottom + right edge (shadow)
-    ctx.fillRect(a0, a1 - e, a1 - a0, e);
-    ctx.fillRect(a1 - e, a0, e, a1 - a0);
+    if (kind === 'weld') {
+      ctx.fillStyle = 'rgb(150,150,150)'; ctx.fillRect(0, size - 3, size, 3); ctx.fillRect(size - 3, 0, 3, size);
+      ctx.fillStyle = 'rgb(245,245,245)'; ctx.fillRect(0, 0, size, 2); ctx.fillRect(0, 0, 2, size);
+    } else if (kind === 'glue') {
+      var seed = 7; for (var i = 0; i < 90; i++) { seed = (seed * 9301 + 49297) % 233280; var x = seed % size; seed = (seed * 9301 + 49297) % 233280; var y = seed % size;
+        ctx.fillStyle = i % 2 ? 'rgb(232,232,232)' : 'rgb(196,196,196)'; ctx.fillRect(x, y, 2, 2); }
+    } else {
+      var a0 = Math.round(size * 0.27), a1 = Math.round(size * 0.73), e = Math.max(2, Math.round(size * 0.06));
+      ctx.fillStyle = 'rgb(255,255,255)'; ctx.fillRect(a0, a0, a1 - a0, e); ctx.fillRect(a0, a0, e, a1 - a0);
+      ctx.fillStyle = 'rgb(128,128,128)'; ctx.fillRect(a0, a1 - e, a1 - a0, e); ctx.fillRect(a1 - e, a0, e, a1 - a0);
+    }
     try {
       var tex = new THREE.CanvasTexture(canvas);
       tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
-      studTileTexture = tex;
+      studTiles[kind] = tex;
       return tex;
     } catch (e) { return null; }
-  }  function partHex(part){
+  }
+  // which tile + how many studs per stud-unit for a part's MaterialVariant
+  function variantTile(v){
+    v = String(v || '');
+    if (/Weld/i.test(v)) return {kind: 'weld', scale: 0.5};
+    if (/Glue/i.test(v)) return {kind: 'glue', scale: 0.25};
+    if (/Big/i.test(v)) return {kind: '', scale: 0.5};
+    if (/Small/i.test(v)) return {kind: '', scale: 2};
+    return {kind: '', scale: 1};
+  }
+  // studded MaterialVariant on a round part: wrap the tile around it
+  function variantMat(part, span, plain){
+    if (!part.variant) return plain();
+    var vt = variantTile(part.variant), base = getStudTileTexture(vt.kind);
+    if (!base) return plain();
+    var t = base.clone(); t.needsUpdate = true;
+    var n = Math.max(1, Math.round(span * vt.scale));
+    t.repeat.set(n * 2, n);
+    return plain({map: t});
+  }
+  function partHex(part){
     if (part.rgb) {
       var r = Math.round(Math.max(0, Math.min(1, part.rgb[0])) * 255), g = Math.round(Math.max(0, Math.min(1, part.rgb[1])) * 255), b = Math.round(Math.max(0, Math.min(1, part.rgb[2])) * 255);
       return (r << 16) | (g << 8) | b;
@@ -164,15 +187,15 @@ window.BWCore = (function(){
       var diameter = Math.min(sz[1], sz[2]);
       geo = new THREE.CylinderGeometry(diameter / 2, diameter / 2, sz[0], 20);
       geo.rotateZ(Math.PI / 2);
-      mat = plain();
+      mat = variantMat(part, Math.max(diameter, sz[0]), plain);
     } else if (part.s === 'ball') {
       geo = new THREE.SphereGeometry(Math.min(sz[0], sz[1], sz[2]) / 2, 18, 14); // Roblox balls use the smallest side
-      mat = plain();
+      mat = variantMat(part, Math.min(sz[0], sz[1], sz[2]) * 1.6, plain);
     } else if (part.s === 'wedge' || part.s === 'cornerwedge') {
       var polys = part.s === 'wedge' ? wedgePolys(sz[0]/2, sz[1]/2, sz[2]/2) : cornerWedgePolys(sz[0]/2, sz[1]/2, sz[2]/2);
       geo = polyGeo(polys);
       var wf = part.faces || '111111';
-      var wtex = getStudTileTexture();
+      var wv = variantTile(part.variant), wtex = getStudTileTexture(wv.kind);
       mat = polys.map(function(pl){
         var studded = wtex && pl.f.some(function(i){ return wf.charAt(i) !== '0'; });
         return plain(studded ? {side: THREE.DoubleSide, map: wtex} : {side: THREE.DoubleSide});
@@ -182,13 +205,13 @@ window.BWCore = (function(){
       // Studs only on the faces the script actually set to Studs/Inlet (like Studio); faces from an
       // older parts list with no face info get studs everywhere, as before.
       var faces = part.faces || '111111';
-      var baseTex = getStudTileTexture();
+      var vt = variantTile(part.variant), baseTex = getStudTileTexture(vt.kind);
       var dims = [[sz[2], sz[1]], [sz[2], sz[1]], [sz[0], sz[2]], [sz[0], sz[2]], [sz[0], sz[1]], [sz[0], sz[1]]];
       mat = dims.map(function(d, i){
         if (faces.charAt(i) === '0' || !baseTex) return plain();
         var t = baseTex.clone();
         t.needsUpdate = true;
-        t.repeat.set(Math.max(1, Math.round(d[0])), Math.max(1, Math.round(d[1])));
+        t.repeat.set(Math.max(1, Math.round(d[0] * vt.scale)), Math.max(1, Math.round(d[1] * vt.scale)));
         return plain({map: t});
       });
     }

@@ -42,12 +42,13 @@
     try { me = await api('/api/me'); } catch (e) { me = me || {signedIn: false, plans: [], costs: {quick: 10, standard: 35, detailed: 75, revise: 10}}; }
     renderAccount(); renderCost(); if ($('#plans')) renderPricing();
     if ($('#historyGrid') && histSignedIn !== !!(me && me.signedIn)) loadHistory(true);
+    document.dispatchEvent(new Event('bw:me'));
     var pill = $('#heroPill'); if (pill && me.freeCreditsPerMonth) pill.textContent = me.freeCreditsPerMonth.toLocaleString() + ' free credits every month';
   }
 
   // ------------------------------------------------------------------ Lua runtime (runs scripts in the browser)
   var preludeText = null;
-  var preludeReady = fetch('/vendor/prelude.lua').then(function(r){ return r.text(); }).then(function(t){ preludeText = t; });
+  var preludeReady = fetch('/vendor/prelude.lua?v=202610281545').then(function(r){ return r.text(); }).then(function(t){ preludeText = t; });
   async function runScript(src){
     await preludeReady;
     try { return window.runLuauPreview(window.fengari, preludeText, C.BRICK_COLOR_FULL, src); }

@@ -31,6 +31,47 @@
     $('#statusText').textContent = text; $('#progress').hidden = !working;
   }
   function save(){ try { sessionStorage.setItem('bw_anim_state', JSON.stringify(state)); } catch (e) {} }
+  // save the rig + animations to the account (Your animations)
+  async function saveRemote(){
+    if (!state.histId || !state.rig || !B.session()) return;
+    try { await B.api('/api/animations', {method: 'POST', body: {histId: state.histId, rig: state.rig, anims: state.anims, current: state.current}}); loadAnimHist(true); }
+    catch (e) { /* best effort */ }
+  }
+  var ahNext = 0, ahSigned = null;
+  async function loadAnimHist(reset){
+    var grid = $('#animHistGrid'); if (!grid) return;
+    if (!B.session()) { ahSigned = false; grid.innerHTML = '<div class="empty"><a href="#" data-action="signin">Sign in</a> to see the rigs and animations you’ve made.</div>'; $('#animHistMore').hidden = true; $('#animHistCount').hidden = true; return; }
+    ahSigned = true;
+    if (reset) { ahNext = 0; grid.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>'; }
+    try {
+      var j = await B.api('/api/animations?offset=' + ahNext);
+      if (reset) grid.innerHTML = '';
+      if (reset && !j.items.length) grid.innerHTML = '<div class="empty">Nothing yet — rig a model above and your animations will be saved here.</div>';
+      grid.insertAdjacentHTML('beforeend', j.items.map(function(it){
+        return '<div class="card hist-card" data-ah="' + B.esc(it.id) + '" role="button" tabindex="0">' +
+          '<div class="thumb">' + (it.thumb ? '<img loading="lazy" alt="" src="' + B.esc(it.thumb) + '">' : '<span>no preview</span>') + '</div>' +
+          '<div class="meta"><h3 title="' + B.esc(it.title) + '">' + B.esc(it.title || 'My build') + '</h3>' +
+          '<div class="sub"><span>' + B.ago(it.updated) + ' · ' + it.joints + ' joints</span></div>' +
+          '<div class="ah-anims">' + (it.anims.length ? it.anims.slice(0, 4).map(function(n){ return '<span class="badge">' + B.esc(n) + '</span>'; }).join('') + (it.anims.length > 4 ? '<span class="badge">+' + (it.anims.length - 4) + '</span>' : '') : '<span class="muted small">rigged, no animations yet</span>') + '</div></div>' +
+          '<button class="hist-del" data-ah-del="' + B.esc(it.id) + '" aria-label="Delete" title="Delete">×</button></div>';
+      }).join(''));
+      ahNext = j.next; $('#animHistMore').hidden = j.next == null;
+      $('#animHistCount').hidden = !j.total; $('#animHistCount').textContent = j.total + (j.total === 1 ? ' model' : ' models');
+    } catch (e) { if (reset) grid.innerHTML = '<div class="empty">Couldn’t load your animations right now.</div>'; }
+  }
+  async function openAnimHist(id){
+    if (busy) { B.toast('Wait for the current job to finish first.', true); return; }
+    try {
+      var proj = await B.api('/api/animations?id=' + encodeURIComponent(id));
+      var it = await B.api('/api/history?id=' + encodeURIComponent(id));
+      await loadModel(it.script, it.brief || proj.title, id);
+      state.rig = proj.rig; state.anims = proj.anims || []; state.current = Math.min(proj.current || 0, state.anims.length - 1);
+      rebuildScene(); renderRig(); renderAnims(); refreshButtons(); save();
+      if (state.current >= 0) play();
+      window.scrollTo({top: 0, behavior: 'smooth'});
+      setStatus('Loaded “' + state.title + '” with ' + state.anims.length + ' animation' + (state.anims.length === 1 ? '' : 's') + '.', 'ok');
+    } catch (e) { B.toast(e.code === 404 ? 'That build was deleted from Your builds, so it can’t be reopened.' : e.message, true); }
+  }
   function costs(){ var me = B.getMe(); return (me && me.costs) || {rig: 10, animate: 10}; }
   function renderCost(){
     var me = B.getMe(), c = costs();
@@ -167,7 +208,7 @@
       state.anims = []; state.current = -1;
       rebuildScene(); renderRig(); renderAnims();
       setStatus('Rigged into ' + state.rig.groups.length + ' joints. Now pick or describe an animation.', 'ok');
-      save();
+      save(); saveRemote();
     } catch (e) { setStatus(e.message || 'Rigging failed — try again.', 'err'); }
     busy = false; refreshButtons();
   }
@@ -206,7 +247,7 @@
       state.anims.push(a); state.current = state.anims.length - 1;
       renderAnims(); play();
       setStatus('“' + a.name + '” is playing. Make more, or export.', 'ok');
-      save();
+      save(); saveRemote();
     } catch (e) { setStatus(e.message || 'Animation failed — try again.', 'err'); }
     busy = false; refreshButtons();
   }
@@ -422,12 +463,24 @@
     $('#jointsToggle').onchange = function(){ var v = this.checked; jointMarkers.forEach(function(m){ m.visible = v; }); viewer.dirty = true; viewer.kick(); };
     $('#animList').onclick = function(e){
       var d = e.target.closest('[data-del]');
-      if (d) { var i = +d.getAttribute('data-del'); state.anims.splice(i, 1); if (state.current >= state.anims.length) state.current = state.anims.length - 1; stop(); renderAnims(); refreshButtons(); save(); if (state.current >= 0) play(); return; }
+      if (d) { var i = +d.getAttribute('data-del'); state.anims.splice(i, 1); if (state.current >= state.anims.length) state.current = state.anims.length - 1; stop(); renderAnims(); refreshButtons(); save(); saveRemote(); if (state.current >= 0) play(); return; }
       var p = e.target.closest('[data-play]'); if (p) { state.current = +p.getAttribute('data-play'); renderAnims(); play(); refreshButtons(); }
     };
     $('#exportCopy').onclick = function(){ navigator.clipboard && navigator.clipboard.writeText(exportScript()).then(function(){ B.toast('Rig script copied — paste it into the Studio command bar.'); }); };
     $('#exportDl').onclick = function(){ B.download(state.title + ' rigged', exportScript()); };
     renderCost(); refreshButtons();
+    $('#animHistGrid').addEventListener('click', async function(e){
+      var del = e.target.closest('[data-ah-del]');
+      if (del) {
+        e.stopPropagation();
+        if (!del.classList.contains('armed')) { del.classList.add('armed'); del.textContent = 'Delete?'; setTimeout(function(){ del.classList.remove('armed'); del.textContent = '×'; }, 2500); return; }
+        try { await B.api('/api/animations?id=' + encodeURIComponent(del.getAttribute('data-ah-del')), {method: 'DELETE'}); B.toast('Removed from your animations.'); loadAnimHist(true); } catch (x) { B.toast(x.message, true); }
+        return;
+      }
+      var c = e.target.closest('[data-ah]'); if (c) openAnimHist(c.getAttribute('data-ah'));
+    });
+    $('#animHistMore').onclick = function(){ loadAnimHist(false); };
+    loadAnimHist(true);
     // incoming model from the Studio / Explore, or a session restore
     var inc = null; try { inc = JSON.parse(sessionStorage.getItem('bw_anim') || 'null'); sessionStorage.removeItem('bw_anim'); } catch (e) {}
     var saved = null; try { saved = JSON.parse(sessionStorage.getItem('bw_anim_state') || 'null'); } catch (e) {}
@@ -442,7 +495,7 @@
       });
     }
   }
-  document.addEventListener('bw:ready', function(){ renderCost(); });
+  document.addEventListener('bw:me', function(){ renderCost(); var m = B && B.getMe(); if (B && ahSigned !== !!(m && m.signedIn)) loadAnimHist(true); });
   if (window.BW) boot(); else document.addEventListener('DOMContentLoaded', function(){ boot(); });
   window.__bwAnim = {get state(){ return state; }, exportScript: function(){ return exportScript(); }};
 })();

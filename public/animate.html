@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/app.css?v=202610281545">
 </head>
 <body data-page="animate" class="page-studio">
 <div class="backdrop" aria-hidden="true"></div>
@@ -85,6 +85,15 @@
       <p class="hint">Animations play when you press <b>Play</b> or <b>Run</b> in Studio — the animator is a normal Script inside the model.</p>
     </section>
   </div>
+
+  <section class="panel history" id="animHistPanel">
+    <div class="history-head">
+      <div><h2>Your animations</h2><p class="muted small">Every rig and animation you make is saved here, privately.</p></div>
+      <span class="badge" id="animHistCount" hidden></span>
+    </div>
+    <div class="grid history-grid" id="animHistGrid"></div>
+    <div class="center"><button class="btn btn-ghost btn-sm" id="animHistMore" hidden>Load more</button></div>
+  </section>
 </main>
 <footer class="footer">
   <div class="wrap footer-inner">
@@ -100,9 +109,9 @@
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <script src="/vendor/three.min.js"></script>
 <script src="/vendor/fengari-web.js"></script>
-<script src="/vendor/runner.js"></script>
-<script src="/core.js"></script>
-<script src="/app.js"></script>
-<script src="/animate.js"></script>
+<script src="/vendor/runner.js?v=202610281545"></script>
+<script src="/core.js?v=202610281545"></script>
+<script src="/app.js?v=202610281545"></script>
+<script src="/animate.js?v=202610281545"></script>
 </body>
 </html>
