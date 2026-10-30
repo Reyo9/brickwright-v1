@@ -379,3 +379,75 @@ kbd{font:500 11px var(--mono);padding:2px 6px;border-radius:6px;border:1px solid
   .explore-bar{top:96px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* ===================== POLISH LAYER: bolder, chunkier UI ===================== */
+:root{ --edge:#0006; --ring:0 0 0 3px rgba(255,107,53,.28); --ease:cubic-bezier(.2,.8,.2,1) }
+::selection{background:rgba(255,107,53,.35)}
+*{scrollbar-width:thin;scrollbar-color:#2f3850 transparent}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#2a3247;border-radius:10px;border:2px solid transparent;background-clip:padding-box}
+h1,h2,h3,.panel h2,.panel h1{letter-spacing:-.02em}
+
+/* Buttons: chunky "brick" buttons with a pressable bottom edge */
+.btn{font-weight:700;border-radius:12px;transition:transform .12s var(--ease),box-shadow .15s,background .15s,border-color .15s,color .15s;
+  box-shadow:0 3px 0 var(--edge),0 1px 0 rgba(255,255,255,.05) inset;position:relative}
+.btn:hover{transform:translateY(-1px);box-shadow:0 4px 0 var(--edge),0 10px 24px -12px rgba(0,0,0,.8),0 1px 0 rgba(255,255,255,.06) inset}
+.btn:active{transform:translateY(2px);box-shadow:0 1px 0 var(--edge),0 1px 0 rgba(255,255,255,.04) inset}
+.btn:focus-visible,.tab:focus-visible,.seg:focus-visible,.chip:focus-visible,.nav-links a:focus-visible{outline:none;box-shadow:var(--ring)}
+.btn-primary{font-weight:800;letter-spacing:.01em;text-shadow:0 1px 0 rgba(255,255,255,.25);
+  box-shadow:0 4px 0 #b8400f,0 12px 30px -10px rgba(255,107,53,.7),0 1px 0 rgba(255,255,255,.45) inset;
+  background-image:radial-gradient(circle at 50% 50%,rgba(255,255,255,.10) 0 2px,transparent 2.6px),linear-gradient(135deg,var(--accent),#ff8a3d 55%,var(--accent-2));
+  background-size:22px 22px,100% 100%}
+.btn-primary:hover{box-shadow:0 5px 0 #b8400f,0 16px 40px -10px rgba(255,107,53,.85),0 1px 0 rgba(255,255,255,.5) inset;
+  background-image:radial-gradient(circle at 50% 50%,rgba(255,255,255,.14) 0 2px,transparent 2.6px),linear-gradient(135deg,#ff7a48,#ff9550 55%,#ffc061)}
+.btn-primary:active{box-shadow:0 1px 0 #b8400f,0 6px 18px -8px rgba(255,107,53,.7),0 1px 0 rgba(255,255,255,.35) inset}
+.btn-lg{padding:15px 26px;font-size:16px;border-radius:14px}
+.btn-accent-soft{box-shadow:0 3px 0 rgba(120,40,10,.7),0 1px 0 rgba(255,255,255,.06) inset}
+.btn-ghost{box-shadow:none}.btn-ghost:hover{box-shadow:none;background:rgba(255,255,255,.05)}
+
+/* Nav */
+.nav{border-bottom-color:rgba(255,255,255,.07);box-shadow:0 10px 30px -20px rgba(0,0,0,.9)}
+.nav-links a{font-weight:600;position:relative;transition:color .15s,background .15s}
+.nav-links a.active{color:#fff;background:rgba(255,107,53,.12);box-shadow:0 0 0 1px rgba(255,107,53,.35) inset}
+.nav-links a.active::after{content:"";position:absolute;left:14px;right:14px;bottom:-13px;height:3px;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--accent-2));box-shadow:0 0 12px rgba(255,107,53,.8)}
+
+/* Panels & cards: crisp top highlight + lift */
+.panel:not(.studio-input){position:relative}
+.panel{border-color:#262e40;box-shadow:var(--shadow),0 1px 0 rgba(255,255,255,.06) inset}
+.panel::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;border-radius:var(--r) var(--r) 0 0;background:linear-gradient(90deg,transparent,rgba(255,140,80,.45),transparent);pointer-events:none}
+.card{transition:transform .18s var(--ease),box-shadow .18s,border-color .18s}
+.card:hover{transform:translateY(-4px);border-color:rgba(255,107,53,.45);box-shadow:0 18px 40px -18px rgba(0,0,0,.9),0 0 0 1px rgba(255,107,53,.25)}
+
+/* Inputs */
+textarea,input,select{border-width:1.5px;background:#0b0e15;transition:border-color .15s,box-shadow .15s,background .15s}
+textarea:hover,input:hover,select:hover{border-color:#34405a}
+textarea:focus,input:focus,select:focus{background:#0d1119;border-color:var(--accent);box-shadow:0 0 0 4px rgba(255,107,53,.16),0 0 24px -6px rgba(255,107,53,.45)}
+
+/* Chips */
+.chip{font-weight:600;transition:transform .12s var(--ease),color .15s,border-color .15s,background .15s;box-shadow:0 2px 0 var(--edge)}
+.chip:hover{transform:translateY(-1px);color:#fff;border-color:rgba(255,107,53,.5);background:rgba(255,107,53,.1)}
+.chip:active{transform:translateY(1px);box-shadow:0 0 0 var(--edge)}
+
+/* Segmented controls & tabs */
+.seg{transition:background .15s,border-color .15s,transform .12s var(--ease)}
+.seg:hover{background:rgba(255,255,255,.03)}
+.seg.active{background:linear-gradient(180deg,rgba(255,107,53,.18),rgba(255,107,53,.06));border-color:rgba(255,107,53,.6);
+  box-shadow:0 3px 0 rgba(120,40,10,.8),0 0 20px -6px rgba(255,107,53,.6),0 1px 0 rgba(255,255,255,.08) inset}
+.seg.active b{color:#fff}
+.tab,.seg-small button{transition:background .15s,color .15s}
+.tab:hover,.seg-small button:hover{color:var(--fg);background:rgba(255,255,255,.04)}
+.tab.active,.seg-small button.active{color:#fff;background:linear-gradient(180deg,#2a3246,#1f2535);box-shadow:0 2px 0 var(--edge),0 0 0 1px rgba(255,107,53,.35) inset}
+
+/* Little motion on load */
+@media (prefers-reduced-motion:no-preference){
+  .panel,.card{animation:bw-rise .45s var(--ease) both}
+  @keyframes bw-rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+}
+/* Highlight strip + steps */
+.strip>div{transition:transform .18s var(--ease),border-color .18s,box-shadow .18s;position:relative;overflow:hidden}
+.strip>div:hover{transform:translateY(-3px);border-color:rgba(255,107,53,.45);box-shadow:0 16px 36px -18px rgba(0,0,0,.9)}
+.strip>div b{background:linear-gradient(135deg,#fff,#ffc9a8);-webkit-background-clip:text;background-clip:text;color:transparent}
+.strip>div::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--accent),var(--accent-2));opacity:.8}
+.step{transition:transform .18s var(--ease),border-color .18s}
+.step:hover{transform:translateY(-3px);border-color:rgba(255,107,53,.4)}
+.step-n,.step-dot{box-shadow:0 3px 0 #b8400f,0 8px 24px -8px rgba(255,107,53,.6),0 1px 0 rgba(255,255,255,.4) inset}
+.btn:disabled,.btn:disabled:hover{transform:none;opacity:1;cursor:not-allowed;background:#1a1f2c;border-color:#262e40;color:#5d6680;text-shadow:none;box-shadow:0 3px 0 #0008}

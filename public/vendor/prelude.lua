@@ -472,7 +472,13 @@ InstMT.__index = function(o, k)
 	end
 	return nil
 end
+local TYPED = {Size = "Vector3", Position = "Vector3", Orientation = "Vector3", CFrame = "CFrame", PivotOffset = "CFrame", Color = "Color3"}
 InstMT.__newindex = function(o, k, v)
+	local want = TYPED[k]
+	if want and v ~= nil then
+		local ok = (want == "Vector3" and isV3(v)) or (want == "CFrame" and isCF(v)) or (want == "Color3" and type(v) == "table" and type(v[1]) == "number" and getmetatable(v) ~= V3 and getmetatable(v) ~= CF)
+		if not ok then error("Unable to assign property " .. k .. ". " .. want .. " expected, got " .. (type(v) == "table" and (isV3(v) and "Vector3" or isCF(v) and "CFrame" or "table") or type(v)), 2) end
+	end
 	local s = setters[k]
 	if s and s(o, v) then return end
 	rawget(o, "_p")[k] = v
@@ -835,7 +841,7 @@ shared = {}
 _G.shared = shared
 
 ----------------------------------------------------------------- export
-local function fmt(n) if n ~= n then return "0" end return string.format("%.4g", n) end
+local function fmt(n) n = tonumber(n) if not n or n ~= n or n == math.huge or n == -math.huge then return "0" end return string.format("%.4g", n) end
 local SURF = {"RightSurface","LeftSurface","TopSurface","BottomSurface","BackSurface","FrontSurface"}
 local function surfFlags(p)
 	local mv = p.MaterialVariant
@@ -858,10 +864,13 @@ local function shapeCode(cls, p)
 	return "b"
 end
 local function emitPiece(out, code, size, cf, color, transp, mat, flags, name, variant)
-	local c = color or c3(0.64, 0.64, 0.65)
+	local c = (type(color) == "table" and color[1]) and color or c3(0.64, 0.64, 0.65)
+	if type(size) ~= "table" then size = {4, 1, 2} end
+	if type(cf) ~= "table" then cf = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1} end
+	if cf[4] == nil then cf = {cf[1] or 0, cf[2] or 0, cf[3] or 0, 1, 0, 0, 0, 1, 0, 0, 0, 1} end
 	out[#out+1] = table.concat({code, fmt(size[1]), fmt(size[2]), fmt(size[3]),
 		fmt(cf[1]), fmt(cf[2]), fmt(cf[3]), fmt(cf[4]), fmt(cf[5]), fmt(cf[6]), fmt(cf[7]), fmt(cf[8]), fmt(cf[9]), fmt(cf[10]), fmt(cf[11]), fmt(cf[12]),
-		fmt(c[1]), fmt(c[2]), fmt(c[3]), fmt(transp or 0), (mat and mat.Name) or "Plastic", flags or "000000", (tostring(name or ""):gsub("[,\n\r\t]", " ")), (tostring(variant or ""):gsub("[,\n\r\t]", " "))}, ",")
+		fmt(c[1]), fmt(c[2]), fmt(c[3]), fmt(transp or 0), (type(mat) == "table" and mat.Name) or "Plastic", flags or "000000", (tostring(name or ""):gsub("[,\n\r\t]", " ")), (tostring(variant or ""):gsub("[,\n\r\t]", " "))}, ",")
 end
 function __export(ok, err)
 	local out = {}

@@ -48,7 +48,7 @@
 
   // ------------------------------------------------------------------ Lua runtime (runs scripts in the browser)
   var preludeText = null;
-  var preludeReady = fetch('/vendor/prelude.lua?v=202610281545').then(function(r){ return r.text(); }).then(function(t){ preludeText = t; });
+  var preludeReady = fetch('/vendor/prelude.lua?v=202610301100').then(function(r){ return r.text(); }).then(function(t){ preludeText = t; });
   async function runScript(src){
     await preludeReady;
     try { return window.runLuauPreview(window.fengari, preludeText, C.BRICK_COLOR_FULL, src); }
@@ -213,10 +213,34 @@
     tsPromise = new Promise(function(res){
       var s = document.createElement('script');
       s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'; s.async = true;
-      s.onload = function(){ res(true); }; s.onerror = function(){ tsPromise = null; res(false); };
+      var to = setTimeout(function(){ tsPromise = null; res(!!window.turnstile); }, 12000);
+      s.onload = function(){ clearTimeout(to); res(true); }; s.onerror = function(){ clearTimeout(to); tsPromise = null; s.remove(); res(false); };
       document.head.appendChild(s);
     });
     return tsPromise;
+  }
+  // Pre-solve the human check quietly in the background as soon as a signed-out visitor lands,
+  // so the sign-in box is ready instantly instead of waiting for Cloudflare.
+  var preId = null, preToken = null, preAt = 0;
+  async function prewarmCaptcha(){
+    if (!me || !me.turnstileSiteKey || me.signedIn || preId != null) return;
+    if (!(await loadTurnstile()) || !window.turnstile) return;
+    var host = document.createElement('div');
+    host.setAttribute('aria-hidden', 'true');
+    host.style.cssText = 'position:fixed;left:-10000px;top:0;width:300px;height:80px;overflow:hidden';
+    document.body.appendChild(host);
+    try {
+      preId = window.turnstile.render(host, {sitekey: me.turnstileSiteKey, size: 'normal', 'refresh-expired': 'auto', retry: 'auto',
+        callback: function(t){ preToken = t; preAt = Date.now(); },
+        'expired-callback': function(){ preToken = null; },
+        'error-callback': function(){ preToken = null; return true; }});
+    } catch (e) { preId = null; }
+  }
+  function takePreToken(){
+    if (!preToken || Date.now() - preAt > 270000) return null;
+    var t = preToken; preToken = null;
+    setTimeout(function(){ try { window.turnstile.reset(preId); } catch (x) {} }, 500); // get a fresh one ready for next time
+    return t;
   }
   function gotToken(t){
     captchaToken = t; clearTimeout(captchaWatch);
@@ -243,30 +267,53 @@
     if (!me || !me.turnstileSiteKey) return;
     $('#lCapState').textContent = 'Checking you’re human…';
     var tries = 0;
-    var arm = function(){ // if Cloudflare hasn't answered in 15s, restart the check (it sometimes stalls)
+    var arm = function(){ // never restart the check (restarting makes it start over) — just show a hint if it's slow
       clearTimeout(captchaWatch);
       captchaWatch = setTimeout(function(){
-        if (captchaToken || !$('#lCaptcha')) return;
-        tries++;
-        if (tries > 3) { $('#lCapState').textContent = 'Still checking… if this takes long, turn off ad blockers/VPN for this site and reload.'; return; }
-        try { window.turnstile.reset(captchaId); } catch (x) {}
-        arm();
-      }, 15000);
+        if (captchaToken || !$('#lCapState')) return;
+        $('#lCapState').textContent = 'Still checking… tick the box if you see one. Ad blockers/VPN can slow this down.';
+      }, 20000);
     };
-    if (await loadTurnstile() && window.turnstile && $('#lCaptcha')) {
+    var inApp = /FBAN|FBAV|Instagram|Line\/|TikTok|musical_ly|Snapchat|Discord|Twitter|wv\)/i.test(navigator.userAgent || '');
+    var showFix = function(msg){
+      if (!$('#lErr')) return;
+      $('#lErr').innerHTML = esc(msg) + ' <button class="link-btn" id="lCapRetry" type="button">Try again</button>';
+      $('#lCapRetry').onclick = function(){ $('#lErr').textContent = ''; renderCaptcha(true); };
+    };
+    var renderCaptcha = async function(fresh){
+      if (fresh) tries = 0;
+      if (!(await loadTurnstile()) || !window.turnstile || !$('#lCaptcha')) {
+        showFix(inApp ? 'This app’s built-in browser blocks the human check. Tap ⋮ / Share → “Open in browser” (Chrome or Safari).'
+          : 'The human check couldn’t load. Turn off ad blockers, VPN or “strict” privacy mode for this site, then try again.');
+        $('#lCapState').textContent = '';
+        return;
+      }
+      try { if (captchaId != null) window.turnstile.remove(captchaId); } catch (x) {}
+      captchaId = null; $('#lCaptcha').innerHTML = '';
+      $('#lCapState').textContent = 'Checking you’re human…';
       captchaId = window.turnstile.render($('#lCaptcha'), {sitekey: me.turnstileSiteKey, theme: 'dark', size: 'flexible',
-        retry: 'auto', 'retry-interval': 2000, 'refresh-expired': 'auto',
+        retry: 'auto', 'retry-interval': 2000, 'refresh-expired': 'auto', appearance: 'always',
         callback: gotToken,
         'expired-callback': function(){ captchaToken = null; },
+        'timeout-callback': function(){ captchaToken = null; showFix('The check timed out.'); },
+        'unsupported-callback': function(){ showFix('This browser isn’t supported by the human check — please use Chrome, Edge, Firefox or Safari.'); },
         'error-callback': function(code){
-          captchaToken = null;
-          var bad = String(code).indexOf('110200') === 0 ? 'this site’s address isn’t added to the Turnstile widget in Cloudflare.'
-            : (String(code).indexOf('1101') === 0 || String(code).indexOf('400') === 0) ? 'the Turnstile site key looks wrong.' : '';
-          if (bad && $('#lErr')) $('#lErr').textContent = 'Captcha error ' + code + ' — ' + bad;
-          return true; // let Cloudflare retry by itself for the other errors
+          captchaToken = null; code = String(code || '');
+          var msg = code.indexOf('110200') === 0 ? 'Site setup issue (110200): this website’s address isn’t on the Turnstile widget’s hostname list.'
+            : (code.indexOf('1101') === 0 || code.indexOf('400') === 0) ? 'Site setup issue (' + code + '): the Turnstile site key looks wrong.'
+            : code.indexOf('300') === 0 || code.indexOf('600') === 0 ? 'Cloudflare couldn’t verify this browser (' + code + '). Turn off VPN/ad blockers, or try another browser.'
+            : code.indexOf('110600') === 0 || code.indexOf('110620') === 0 ? 'Your device clock looks wrong (' + code + ') — fix the date/time and try again.'
+            : inApp ? 'This app’s built-in browser blocks the check — open the site in Chrome or Safari.'
+            : 'The human check failed (' + code + ').';
+          showFix(msg);
+          return true;
         }});
       arm();
-    } else if ($('#lErr')) $('#lErr').textContent = 'The captcha couldn’t load — disable blockers for this site and reload.';
+    };
+    var pre = takePreToken();
+    if (pre) { $('#lCapState').textContent = '✓ Verified'; gotToken(pre); return; }
+    await renderCaptcha(true);
+    if (inApp && !captchaToken && $('#lCapState')) $('#lCapState').textContent = 'Checking… if it gets stuck, open this site in Chrome/Safari instead of the app’s browser.';
   }
   async function sendCode(){
     var err = $('#lErr'), btn = $('#lSend');
@@ -542,7 +589,7 @@
       last.script = p.script; last.notes = p.notes;
       await autoFix(b);
       await showResult(); showTab('preview');
-      setStatus('Done — ' + last.parts.length + ' parts. Saved to your builds.', 'ok');
+      setStatus('Done — ' + last.parts.length + ' parts' + '. Saved to your builds.', 'ok');
       saveHistory();
     } catch (e) {
       handleError(e);
@@ -901,7 +948,12 @@
   (async function(){
     if ($('#heroViewer')) {
       var hero = new Viewer($('#heroViewer'), {autoRotate: true});
-      fetch('/showcase.lua').then(function(r){ return r.ok ? r.text() : C.EXAMPLE_SCRIPT; }).catch(function(){ return C.EXAMPLE_SCRIPT; })
+      // a different showcase build every 3 days (same for every visitor)
+      var SHOWCASE = [['dragon','divine_dragon'],['supercar','supercar'],['hydra3','hydra_dragon'],['pizza','pizza_box'],['robot','boxy_robot'],
+        ['hydra_classic','three_headed_hydra'],['bonsai','bonsai_tree'],['pancake','pancake_stack']];
+      var pick = SHOWCASE[Math.floor(Date.now() / (3 * 86400000)) % SHOWCASE.length];
+      var cap = document.querySelector('.stage-caption .mono'); if (cap) cap.textContent = pick[1] + '.lua · made with Brickwright';
+      fetch('/showcase/' + pick[0] + '.lua').then(function(r){ return r.ok ? r.text() : fetch('/showcase.lua').then(function(r2){ return r2.text(); }); }).catch(function(){ return C.EXAMPLE_SCRIPT; })
         .then(runScript).then(function(ex){ hero.setParts(ex.parts); });
     }
     if (isStudio) {
@@ -923,7 +975,7 @@
       if (q.get('checkout') === 'success') { toast('Payment received — your plan activates in a few seconds.'); setTimeout(refreshMe, 4000); setTimeout(refreshMe, 10000); }
     }
     await refreshMe();
-    loadTurnstile(); // warm up the captcha so the sign-in box is ready instantly
+    loadTurnstile().then(prewarmCaptcha); // pre-solve the captcha so the sign-in box is ready instantly
     document.dispatchEvent(new Event('bw:ready'));
     if ($('#exploreGrid')) {
       loadExplore(true, PAGE === 'home' ? 8 : 0);

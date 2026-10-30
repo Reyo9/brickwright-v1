@@ -165,7 +165,7 @@ export async function sendLoginCode(to, code) {
   }
   if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) throw new Error('Email sending is not set up (GMAIL_USER / GMAIL_APP_PASSWORD).');
   const nodemailer = (await import('nodemailer')).default;
-  const t = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD } });
+  const t = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 465, secure: true, connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000, auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD } });
   await t.sendMail({ from: '"Brickwright" <' + process.env.GMAIL_USER + '>', to, subject, text, html });
 }
 

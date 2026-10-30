@@ -35,7 +35,7 @@ export default async (req) => {
   let idleTimer = null;
   const poke = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => ctrl.abort(), IDLE_MS); };
 
-  let full = '', failure = null, lastSave = 0, cancelled = false, thinking = 0;
+  let usedModel = '', full = '', failure = null, lastSave = 0, cancelled = false, thinking = 0;
   const save = async (force) => {
     if (!force && Date.now() - lastSave < 700) return;
     lastSave = Date.now();
@@ -81,7 +81,9 @@ export default async (req) => {
         body: JSON.stringify(b),
       });
       // busy/overloaded → wait and retry, then try the backup models in AI_FALLBACK_MODELS (comma-separated)
-      const models = [model, ...String(process.env.AI_FALLBACK_MODELS || '').split(',').map((x) => x.trim()).filter(Boolean)];
+      const models = [model, ...String(process.env.AI_FALLBACK_MODELS || '').split(',').map((x) => x.trim()).filter(Boolean)]
+        // lite/nano models write broken, ugly builds — only allow them for the cheap enhance task
+        .filter((m, i) => i === 0 || task === 'enhance' || !/lite|nano|mini/i.test(m));
       const busy = (st) => st === 429 || st === 500 || st === 502 || st === 503 || st === 504 || st === 529;
       outer: for (const m of models) {
         body.model = m;
@@ -95,6 +97,7 @@ export default async (req) => {
             continue;
           }
           log('AI answered HTTP', upstream.status, 'model', m, 'try', attempt + 1);
+          usedModel = m;
           if (upstream.status === 400 && (body.chat_template_kwargs || body.reasoning_effort)) {
             // provider rejected the extra switches — retry without them
             await upstream.text().catch(() => '');
@@ -162,6 +165,7 @@ export default async (req) => {
     status: cancelled ? 'cancelled' : (complete ? 'done' : 'error'),
     error: cancelled ? null : (complete ? null : (failure || 'The AI didn’t return a complete script.')),
     refunded: !complete || cancelled,
+    model: usedModel || null,
   });
 };
 
