@@ -14,10 +14,11 @@ local API = "https://brickwright.netlify.app/api/plugin"
 local VERSION = "1.0"
 
 local toolbar = plugin:CreateToolbar("Brickwright")
-local button = toolbar:CreateButton("Brickwright", "Insert your Brickwright builds and GUIs", "rbxassetid://6927295857")
+local button = toolbar:CreateButton("Brickwright", "Insert your Brickwright builds and GUIs", "rbxassetid://6927295847")
 button.ClickableWhenViewportHidden = true
 
-local widget = plugin:CreateDockWidgetPluginGui("BrickwrightWidget", DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Right, false, false, 320, 520, 260, 300))
+-- opens floating in the middle of the screen at 680x500
+local widget = plugin:CreateDockWidgetPluginGui("BrickwrightWindow", DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, false, true, 680, 500, 360, 320))
 widget.Title = "Brickwright"
 widget.Name = "Brickwright"
 

@@ -17,7 +17,7 @@
   function iconKey(n){ n = String(n||'').toLowerCase(); return PACK.color[n] ? n : (ALIAS[n] || n); }
   function iconRef(n, white){ var k = iconKey(n), w = white && PACK.white[k], e = w || PACK.color[k]; if (!e) return null; return {id: (w ? PACK.wid : PACK.cid)[e[0]], sheet: (w ? 'white_' : 'color_') + (e[0]+1), x: e[1], y: e[2], white: !!w}; }
   var ICON_IDS = window.BW_ICON_IDS || {}; // name → "rbxassetid://123" (icon pack)
-  var STUD_ID = window.BW_STUD_ID || 'rbxassetid://6927295857'; // Roblox image ID of /stud-tile.png once uploaded
+  var STUD_ID = window.BW_STUD_ID || 'rbxassetid://6927295847'; // Roblox image ID of /stud-tile.png once uploaded
 
   var FONTS = {Gotham:['Montserrat',500], GothamMedium:['Montserrat',600], GothamBold:['Montserrat',700], GothamBlack:['Montserrat',900],
     FredokaOne:['Fredoka',700], LuckiestGuy:['Luckiest Guy',400], Bangers:['Bangers',400], Arcade:['Press Start 2P',400],
@@ -366,7 +366,7 @@
     }
     var start = L.length;
     [sp.root].concat(sp.extra).forEach(function(n){ emit(n, 'gui'); L.push(''); });
-    if (hasStuds) L.splice(start, 0, '-- Stud texture (swap for rbxassetid://125586839193910 for the universal studs)', 'local STUD_IMAGE = ' + lstr(STUD_ID), '');
+    if (hasStuds) L.splice(start, 0, '-- Stud texture (swap for rbxassetid://110613161164843 for the universal studs)', 'local STUD_IMAGE = ' + lstr(STUD_ID), '');
     if (hasIcons) {
       var used = {}; [sp.root].concat(sp.extra).forEach(function(r){ walk(r, function(n){ if (n.icon && !iconRef(n.icon)) used[n.icon] = 1; }); });
       var lines = ['-- Icons: paste your image IDs here (rbxassetid://...) — empty ones stay blank', 'local ICONS = {'];
@@ -499,7 +499,7 @@
   function saveLocal(){
     try {
       var list = loadLocal().filter(function(x){ return x.brief !== current.brief || x.t > Date.now() - 1; });
-      list.unshift({t: Date.now(), brief: current.brief, spec: stripCount(current.spec), notes: current.notes, msgs: current.msgs});
+      list.unshift({t: Date.now(), brief: current.brief, spec: stripCount(current.spec), notes: current.notes, msgs: current.msgs, cloud: B.session() ? 1 : 0});
       localStorage.setItem(HKEY, JSON.stringify(list.slice(0, 20)));
     } catch (e) {}
     renderHistory();
@@ -607,6 +607,16 @@
     $('#gShare').onclick = share;
     $('#gGalMore').onclick = function(){ loadGallery(false); };
     loadGallery(true);
+    // upload GUIs made before cloud saving, so the Studio plugin can see them
+    setTimeout(async function syncLocal(){
+      if (!B.session()) return;
+      var list = loadLocal(), changed = false;
+      for (var i = list.length - 1; i >= 0; i--) {
+        var x = list[i]; if (x.cloud || !x.spec) continue;
+        try { var sp = sanitize(x.spec); await B.api('/api/plugin', {method: 'POST', body: {action: 'saveGui', name: sp.name, brief: x.brief, script: toLuau(sp)}}); x.cloud = 1; changed = true; } catch (e) { break; }
+      }
+      if (changed) try { localStorage.setItem(HKEY, JSON.stringify(list)); } catch (e) {}
+    }, 1500);
     show(sanitize(EXAMPLE), 'A built-in example. Describe your own GUI and press Generate.');
   }
   // exposed for tests
