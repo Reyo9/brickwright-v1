@@ -1,7 +1,7 @@
 // Background worker (up to 15 minutes): calls the AI, saves the text to the database as it streams,
 // marks the job done/failed, and refunds the credits if no complete script came back.
 import { CONFIG } from '../lib/config.mjs';
-import { redis, refund, refundJob, internalToken } from '../lib/core.mjs';
+import { redis, refund, refundJob, internalToken, stat, logFailure } from '../lib/core.mjs';
 import { coachFor } from '../lib/coach.mjs';
 import { TASKS } from '../lib/tasks.mjs';
 
@@ -35,7 +35,7 @@ export default async (req) => {
   let idleTimer = null;
   const poke = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => ctrl.abort(), IDLE_MS); };
 
-  let usedModel = '', full = '', failure = null, lastSave = 0, cancelled = false, thinking = 0;
+  let usedModel = '', lastStatus = 0, full = '', failure = null, lastSave = 0, cancelled = false, thinking = 0;
   const save = async (force) => {
     if (!force && Date.now() - lastSave < 700) return;
     lastSave = Date.now();
@@ -97,7 +97,7 @@ export default async (req) => {
             continue;
           }
           log('AI answered HTTP', upstream.status, 'model', m, 'try', attempt + 1);
-          usedModel = m;
+          usedModel = m; lastStatus = upstream.status;
           if (upstream.status === 400 && (body.chat_template_kwargs || body.reasoning_effort)) {
             // provider rejected the extra switches — retry without them
             await upstream.text().catch(() => '');
@@ -115,6 +115,9 @@ export default async (req) => {
     if (!upstream.ok || !upstream.body) {
       const t = await upstream.text().catch(() => '');
       let msg = t; try { const j = JSON.parse(t); msg = (j.error && (j.error.message || j.error)) || j.detail || t; } catch (e) {}
+      lastStatus = upstream.status;
+      const busyNow = [429, 500, 502, 503, 504, 529].includes(upstream.status) || /quota|exhausted|rate.?limit|overloaded|unavailable/i.test(String(msg));
+      if (busyNow) throw Object.assign(new Error('BUSY'), { busy: true, detail: String(msg).slice(0, 300) });
       throw new Error(String(msg || ('AI service error ' + upstream.status)).slice(0, 400));
     }
     const reader = upstream.body.getReader();
@@ -148,9 +151,14 @@ export default async (req) => {
       if (cancelled) { try { await reader.cancel(); } catch (e) {} break; }
     }
   } catch (e) {
-    failure = ctrl.signal.aborted
-      ? 'The AI didn’t respond for ' + Math.round(IDLE_MS / 1000) + 's — the AI service may be overloaded. Please try again.'
+    var busyFail = !!(e && e.busy);
+    failure = busyFail
+      ? 'Builds are busy right now — lots of people are building. Please try again in a few minutes.'
+      : ctrl.signal.aborted
+      ? 'The AI took too long to answer — it may be overloaded. Please try again.'
       : String(e.message || e);
+    if (busyFail && !job.fix) await stat('busy');
+    await logFailure({ task: task || 'build', status: lastStatus, model: usedModel, error: busyFail ? 'busy: ' + (e.detail || '') : String(e.message || e).slice(0, 300) });
     log('failed:', failure);
   }
 
@@ -159,8 +167,10 @@ export default async (req) => {
   // reasoning models may wrap their thinking in <think>...</think>; keep only the answer
   full = full.replace(/<think>[\s\S]*?<\/think>\s*/g, '');
   await save(true);
-  const complete = task === 'enhance' ? full.trim().length > 10 : task ? /\{[\s\S]*"(groups|keys)"[\s\S]*\}/.test(full) : /```(?:lua|luau)?\s*[\s\S]*?```/i.test(full);
+  const complete = task === 'enhance' ? full.trim().length > 10 : task === 'gui' ? /"root"\s*:/.test(full) : task ? /\{[\s\S]*"(groups|keys)"[\s\S]*\}/.test(full) : /```(?:lua|luau)?\s*[\s\S]*?```/i.test(full);
   if (!complete || cancelled) await refundJob(job);
+  await stat(cancelled ? 'cancelled' : job.fix ? (complete ? 'fixes_done' : 'fixes_failed') : complete ? (task ? 'task_done' : 'builds_done') : (task ? 'task_failed' : 'builds_failed'));
+  if (!complete && !cancelled && !failure) await logFailure({ task: task || 'build', status: lastStatus, model: usedModel, error: 'incomplete answer (' + full.length + ' chars)' });
   await setJob(id, {
     status: cancelled ? 'cancelled' : (complete ? 'done' : 'error'),
     error: cancelled ? null : (complete ? null : (failure || 'The AI didn’t return a complete script.')),

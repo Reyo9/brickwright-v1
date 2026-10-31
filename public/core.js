@@ -236,7 +236,16 @@ window.BWCore = (function(){
     }
     if (e && typeof e === 'object') return e; // old object format still accepted
     return null;
-  }  function parseResponse(raw){
+  }
+  // Every script starts with a Brickwright credit line (added here, so it never depends on the AI remembering).
+  var BRAND = '-- Made with Brickwright · https://brickwright.netlify.app';
+  function brandScript(script){
+    if (!script || script.indexOf('Instance.new') < 0) return script;
+    script = script.replace(/^[ \t]*--[^\n]*(created|made) by distinctus[^\n]*\n?/gim, '');
+    if (script.indexOf('Made with Brickwright') >= 0) return script;
+    return BRAND + '\n' + script.replace(/^\s+/, '');
+  }
+  function parseResponse(raw){
     var script = raw, notes = '', parts = null;
     var m = raw.match(/```(?:lua|luau)?\s*([\s\S]*?)```/i);
     if (m) {
@@ -254,7 +263,7 @@ window.BWCore = (function(){
       if (bits.length > 1) { script = bits[0].trim(); notes = bits[1].trim(); }
     }
     if (!notes) notes = 'No separate build notes came back with this one — the script above is the full result.';
-    return {script: script, notes: notes, parts: parts};
+    return {script: brandScript(script), notes: notes, parts: parts};
   }  function buildPrompt(brief, detailKey, treatment, allowCsg, hasImage){
     var detailInfo = details.filter(function(d){ return d.key === detailKey; })[0];
     return [

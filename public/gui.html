@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>GUI Maker — Brickwright</title>
+<meta name="description" content="Describe a Roblox GUI — shop, inventory, menu, HUD — and get a ready-made ScreenGui script with a live preview.">
+<meta property="og:title" content="GUI Maker — Brickwright">
+<meta property="og:description" content="Describe a Roblox GUI and get a ready-made ScreenGui script with a live preview.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Brickwright">
+<meta property="og:image" content="https://brickwright.netlify.app/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0a0c11">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='10' width='28' height='18' rx='4' fill='%23ff6b35'/%3E%3Crect x='7' y='5' width='7' height='6' rx='2' fill='%23ff6b35'/%3E%3Crect x='18' y='5' width='7' height='6' rx='2' fill='%23ff6b35'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css?v=202610311600">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;700;900&family=Fredoka:wght@500;700&family=Luckiest+Guy&family=Bangers&family=Press+Start+2P&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/gui.css?v=202610311600">
+</head>
+<body data-page="studio" class="page-studio">
+<div class="backdrop" aria-hidden="true"></div>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/" aria-label="Brickwright home"><svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect x="2" y="10" width="28" height="18" rx="4" fill="currentColor"/><rect x="7" y="5" width="7" height="6" rx="2" fill="currentColor"/><rect x="18" y="5" width="7" height="6" rx="2" fill="currentColor"/></svg><span>Brickwright</span></a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="/" data-page="home">Home</a>
+      <a href="/studio" data-page="gui">Studio</a>
+      <a href="/explore" data-page="explore">Explore</a>
+      <a href="/animate" data-page="animate">Animate</a>
+      <a href="/gui" data-page="gui">GUI</a>
+      <a href="/#pricing" data-page="pricing">Pricing</a>
+    </nav>
+    <div class="nav-account" id="account"><button class="btn btn-primary btn-sm" data-action="signin">Sign in</button></div>
+  </div>
+</header>
+
+<main class="wrap studio-page">
+  <div class="studio">
+    <aside class="panel studio-input">
+      <div class="panel-title"><h1>GUI Maker</h1><span class="muted small">Describe a Roblox UI, get a ScreenGui</span></div>
+      <label class="label" for="gBrief">What GUI do you need?</label>
+      <textarea id="gBrief" rows="5" placeholder="A shop menu with 3 tabs (Swords, Pets, Gamepasses), item cards with a picture, name, price and Buy button, a close button, coins counter at the top…"></textarea>
+      <div class="chips" id="gChips"></div>
+      <div class="row-2">
+        <div><label class="label" for="gStyle">Style</label><select id="gStyle"></select></div>
+        <div><label class="label" for="gAccent">Accent colour</label><input id="gAccent" type="color" value="#ff6b35" class="color-in"></div>
+      </div>
+      <label class="switch" style="margin-top:12px">
+        <input type="checkbox" id="gBehave" checked>
+        <span class="switch-ui"></span>
+        <span class="switch-text">Working buttons<small>tabs, open &amp; close, hover effects</small></span>
+      </label>
+      <button class="btn btn-primary btn-block btn-lg" id="gGo" style="margin-top:16px">Generate GUI</button>
+      <button class="btn btn-ghost btn-block" id="gStop" hidden>Stop</button>
+      <p class="cost-line" id="gCost"></p>
+    </aside>
+
+    <section class="panel studio-output">
+      <div class="out-head">
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-gtab="preview">Preview</button>
+          <button class="tab" data-gtab="script">Script</button>
+          <button class="tab" data-gtab="notes">Notes</button>
+        </div>
+        <div class="out-actions">
+          <div class="seg-small" id="gDevice"><button data-dev="pc" class="active">PC</button><button data-dev="tablet">Tablet</button><button data-dev="phone">Phone</button></div>
+          <button class="icon-btn" id="gCopy" title="Copy script" aria-label="Copy script"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button>
+          <button class="icon-btn" id="gDownload" title="Download .lua" aria-label="Download .lua"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg></button>
+        </div>
+      </div>
+      <div class="status" id="gStatus"><span id="gStatusText">Example GUI — describe your own on the left.</span></div>
+      <div class="pane" data-gpane="preview">
+        <div class="gstage" id="gStage"><div class="gscreen" id="gScreen"></div></div>
+        <div class="pane-foot"><span id="gInfo"></span><span class="muted">click the buttons — the preview works like in-game</span></div>
+      </div>
+      <div class="pane" data-gpane="script" hidden><pre class="code" id="gCode"></pre></div>
+      <div class="pane" data-gpane="notes" hidden><div class="notes" id="gNotes"></div></div>
+      <div class="revise">
+        <input id="gReviseIn" placeholder="Ask for a change — e.g. make it purple and add a Gamepasses tab">
+        <button class="btn" id="gRevise">Revise</button>
+      </div>
+      <p class="hint">Paste the script into Studio’s command bar (View → Command Bar) and press Enter — the ScreenGui appears in StarterGui.</p>
+    </section>
+  </div>
+
+  <section class="panel history">
+    <div class="history-head"><div><h2>Your GUIs</h2><p class="muted small">Saved in this browser.</p></div></div>
+    <div class="grid history-grid" id="gHistory"></div>
+  </section>
+</main>
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div class="foot-brand"><a class="brand" href="/"><svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect x="2" y="10" width="28" height="18" rx="4" fill="currentColor"/><rect x="7" y="5" width="7" height="6" rx="2" fill="currentColor"/><rect x="18" y="5" width="7" height="6" rx="2" fill="currentColor"/></svg><span>Brickwright</span></a><p class="muted small">Describe it. Get it in bricks.<br>Classic studded Roblox models from a sentence.</p></div>
+    <div class="foot-cols">
+      <div><h4>Product</h4><a href="/studio">Studio</a><a href="/explore">Explore</a><a href="/animate">Animate</a><a href="/gui">GUI Maker</a><a href="/#pricing">Pricing</a></div>
+      <div><h4>Help</h4><a href="/#faq">FAQ</a><a href="/#how">How it works</a></div>
+      <div><h4>Legal</h4><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+    </div>
+  </div>
+  <div class="wrap foot-base"><span>© <span id="year"></span> Brickwright</span><span class="muted">Not affiliated with or endorsed by Roblox Corporation. Always read a script before running it.</span></div>
+</footer>
+<div class="modal" id="modal" hidden><div class="modal-card" role="dialog" aria-modal="true"><button class="modal-x" aria-label="Close">×</button><div id="modalBody"></div></div></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="/vendor/three.min.js"></script>
+<script src="/vendor/fengari-web.js"></script>
+<script src="/vendor/runner.js?v=202610311600"></script>
+<script src="/core.js?v=202610311600"></script>
+<script src="/app.js?v=202610311600"></script>
+<script src="/gui.js?v=202610311600"></script>
+</body>
+</html>

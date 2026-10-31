@@ -451,3 +451,5 @@ textarea:focus,input:focus,select:focus{background:#0d1119;border-color:var(--ac
 .step:hover{transform:translateY(-3px);border-color:rgba(255,107,53,.4)}
 .step-n,.step-dot{box-shadow:0 3px 0 #b8400f,0 8px 24px -8px rgba(255,107,53,.6),0 1px 0 rgba(255,255,255,.4) inset}
 .btn:disabled,.btn:disabled:hover{transform:none;opacity:1;cursor:not-allowed;background:#1a1f2c;border-color:#262e40;color:#5d6680;text-shadow:none;box-shadow:0 3px 0 #0008}
+.menu-pop .menu-link{display:block;padding:9px 10px;border-radius:9px;font-size:14px;color:var(--fg);text-decoration:none}
+.menu-pop .menu-link:hover{background:var(--surface-2)}

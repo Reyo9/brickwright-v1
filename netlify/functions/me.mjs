@@ -1,6 +1,6 @@
 // Account status for the page + public plan list and costs.
 import { CONFIG } from '../lib/config.mjs';
-import { json, readSession, account, publicPlans } from '../lib/core.mjs';
+import { json, readSession, account, publicPlans, isAdmin } from '../lib/core.mjs';
 
 export default async (req) => {
   const pub = {
@@ -16,7 +16,7 @@ export default async (req) => {
   try {
     const a = await account(s.sub);
     delete a.bucket;
-    return json({ signedIn: true, user: { id: s.sub, name: s.name }, ...a, ...pub });
+    return json({ signedIn: true, user: { id: s.sub, name: s.name }, ...a, ...pub, admin: isAdmin(s.sub) });
   } catch (e) {
     return json({ signedIn: true, user: { id: s.sub, name: s.name }, error: String(e.message || e), ...pub }, 500);
   }

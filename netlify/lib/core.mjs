@@ -200,3 +200,21 @@ export function verifyStripeSignature(raw, header, whsec) {
   const expected = crypto.createHmac('sha256', whsec).update(t + '.' + raw).digest('hex');
   return sigs.some((s) => s.length === expected.length && crypto.timingSafeEqual(Buffer.from(s), Buffer.from(expected)));
 }
+
+// ---------------------------------------------------------------- admin stats (best-effort, never breaks a request)
+export function dayKey(d = new Date()) { return d.toISOString().slice(0, 10); }
+const STAT_TTL = 60 * 60 * 24 * 60;
+export async function stat(metric, by = 1) {
+  try { const k = 'st:' + dayKey() + ':' + metric; await redis('INCRBY', k, by); await redis('EXPIRE', k, STAT_TTL); } catch (e) {}
+}
+export async function statUser(acct, by = 1) {
+  try { const k = 'st:' + dayKey() + ':users'; await redis('ZINCRBY', k, by, acct); await redis('EXPIRE', k, STAT_TTL); } catch (e) {}
+}
+export async function logFailure(entry) {
+  try {
+    const raw = await redis('GET', 'st:failures');
+    const list = raw ? JSON.parse(raw) : [];
+    list.unshift({ ...entry, t: Date.now() });
+    await redis('SET', 'st:failures', JSON.stringify(list.slice(0, 40)));
+  } catch (e) {}
+}

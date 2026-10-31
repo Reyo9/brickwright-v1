@@ -1,7 +1,7 @@
 // Email login, step 2: check the code, create the account on first login, return a session.
 import crypto from 'crypto';
 import { CONFIG } from '../lib/config.mjs';
-import { json, readJson, redis, clientIp, normalizeEmail, hashCode, makeSession } from '../lib/core.mjs';
+import { json, readJson, redis, clientIp, normalizeEmail, hashCode, makeSession, stat } from '../lib/core.mjs';
 
 export default async (req, context) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
@@ -50,7 +50,9 @@ export default async (req, context) => {
         }
       }
       await redis('SET', 'acct:' + acct, JSON.stringify({ created: Date.now(), ip, email: String(body.email).trim().toLowerCase() }));
+      await stat('signups');
     }
+    await stat('logins');
     const shown = String(body.email).trim().toLowerCase();
     return json({ session: makeSession({ sub: acct, name: shown }), user: { id: acct, name: shown } });
   } catch (e) {

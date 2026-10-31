@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Admin — Brickwright</title>
+<meta name="robots" content="noindex">
+<meta name="description" content="Brickwright admin dashboard.">
+<meta property="og:title" content="Admin — Brickwright">
+<meta property="og:description" content="Brickwright admin dashboard.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Brickwright">
+<meta property="og:image" content="https://brickwright.netlify.app/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0a0c11">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='10' width='28' height='18' rx='4' fill='%23ff6b35'/%3E%3Crect x='7' y='5' width='7' height='6' rx='2' fill='%23ff6b35'/%3E%3Crect x='18' y='5' width='7' height='6' rx='2' fill='%23ff6b35'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css?v=202610311600">
+</head>
+<body data-page="admin">
+<div class="backdrop" aria-hidden="true"></div>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/" aria-label="Brickwright home"><svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect x="2" y="10" width="28" height="18" rx="4" fill="currentColor"/><rect x="7" y="5" width="7" height="6" rx="2" fill="currentColor"/><rect x="18" y="5" width="7" height="6" rx="2" fill="currentColor"/></svg><span>Brickwright</span></a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="/" data-page="home">Home</a>
+      <a href="/studio" data-page="studio">Studio</a>
+      <a href="/explore" data-page="explore">Explore</a>
+      <a href="/animate" data-page="animate">Animate</a>
+      <a href="/gui" data-page="gui">GUI</a>
+      <a href="/#pricing" data-page="pricing">Pricing</a>
+    </nav>
+    <div class="nav-account" id="account"><button class="btn btn-primary btn-sm" data-action="signin">Sign in</button></div>
+  </div>
+</header>
+
+<main class="wrap">
+<style>
+.adm{margin:40px 0 80px}.adm h1{margin:0 0 4px}.adm .sub{color:var(--muted);margin:0 0 24px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
+.kpi{padding:16px 18px;border-radius:14px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.01))}
+.kpi b{display:block;font:700 28px var(--display)}.kpi span{color:var(--muted);font-size:13px}.kpi small{display:block;color:var(--faint);font-size:12px;margin-top:2px}
+.kpi.bad b{color:#ff8f8f}.kpi.good b{color:var(--good)}
+.adm-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}@media(max-width:900px){.adm-grid{grid-template-columns:1fr}}
+.chart{display:flex;align-items:flex-end;gap:6px;height:170px;padding:10px 4px 0}
+.bar{flex:1;display:flex;flex-direction:column-reverse;border-radius:6px 6px 2px 2px;overflow:hidden;min-height:2px;position:relative}
+.bar i{display:block}.bar .ok{background:var(--good)}.bar .fail{background:#ff6b6b}.bar .busy{background:#ffb547}
+.bar:hover::after{content:attr(data-tip);position:absolute;bottom:100%;left:50%;transform:translateX(-50%);white-space:nowrap;background:#000c;padding:4px 7px;border-radius:6px;font-size:11px;margin-bottom:4px}
+.xl{display:flex;gap:6px;padding:4px}.xl span{flex:1;text-align:center;color:var(--faint);font-size:10.5px}
+.legend{display:flex;gap:14px;color:var(--muted);font-size:12.5px;margin-top:6px}.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px}.tbl td,.tbl th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left}.tbl th{color:var(--faint);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.tbl td.num{text-align:right;font-variant-numeric:tabular-nums}.err-msg{color:var(--muted);font-family:var(--mono);font-size:12px;word-break:break-word}
+.adm .panel h3{margin:0 0 6px;font-size:16px}
+</style>
+<section class="adm">
+<span class="kicker">Admin</span><h1>Dashboard</h1><p class="sub" id="admSub">Loading…</p>
+<div id="admBody"></div>
+</section>
+</main>
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div class="foot-brand"><a class="brand" href="/"><svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect x="2" y="10" width="28" height="18" rx="4" fill="currentColor"/><rect x="7" y="5" width="7" height="6" rx="2" fill="currentColor"/><rect x="18" y="5" width="7" height="6" rx="2" fill="currentColor"/></svg><span>Brickwright</span></a><p class="muted small">Describe it. Get it in bricks.<br>Classic studded Roblox models from a sentence.</p></div>
+    <div class="foot-cols">
+      <div><h4>Product</h4><a href="/studio">Studio</a><a href="/explore">Explore</a><a href="/animate">Animate</a><a href="/gui">GUI Maker</a><a href="/#pricing">Pricing</a></div>
+      <div><h4>Help</h4><a href="/#faq">FAQ</a><a href="/#how">How it works</a></div>
+      <div><h4>Legal</h4><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+    </div>
+  </div>
+  <div class="wrap foot-base"><span>© <span id="year"></span> Brickwright</span><span class="muted">Not affiliated with or endorsed by Roblox Corporation. Always read a script before running it.</span></div>
+</footer>
+<div class="modal" id="modal" hidden><div class="modal-card" role="dialog" aria-modal="true"><button class="modal-x" aria-label="Close">×</button><div id="modalBody"></div></div></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="/vendor/three.min.js"></script>
+<script src="/vendor/fengari-web.js"></script>
+<script src="/vendor/runner.js?v=202610311600"></script>
+<script src="/core.js?v=202610311600"></script>
+<script src="/app.js?v=202610311600"></script>
+<script src="/admin.js?v=202610311600"></script>
+</body>
+</html>

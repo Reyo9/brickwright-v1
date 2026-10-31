@@ -22,11 +22,26 @@
   status = 200
 
 [[redirects]]
-  from = "/b/*"
-  to = "/explore.html"
+  from = "/animate"
+  to = "/animate.html"
   status = 200
 
 [[redirects]]
-  from = "/animate"
-  to = "/animate.html"
+  from = "/terms"
+  to = "/terms.html"
+  status = 200
+
+[[redirects]]
+  from = "/privacy"
+  to = "/privacy.html"
+  status = 200
+
+[[redirects]]
+  from = "/admin"
+  to = "/admin.html"
+  status = 200
+
+[[redirects]]
+  from = "/gui"
+  to = "/gui.html"
   status = 200

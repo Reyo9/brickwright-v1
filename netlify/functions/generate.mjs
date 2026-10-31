@@ -3,7 +3,7 @@
 // take longer). The page then polls /api/job for the text as it's written.
 import crypto from 'crypto';
 import { CONFIG } from '../lib/config.mjs';
-import { json, readJson, readSession, account, reserve, refund, redis, internalToken, clientIp, reserveNetworkFree } from '../lib/core.mjs';
+import { json, readJson, readSession, account, reserve, refund, redis, internalToken, clientIp, reserveNetworkFree, stat, statUser } from '../lib/core.mjs';
 
 export default async (req, context) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
@@ -30,10 +30,10 @@ export default async (req, context) => {
   }
   if (images > 1) return json({ error: 'Only one reference image per build.' }, 400);
   const detail = ['quick', 'standard', 'detailed'].includes(body.detail) ? body.detail : 'standard';
-  const task = ['rig', 'animate', 'enhance'].includes(body.kind) ? body.kind : null;
-  let cost = task ? (CONFIG.costs[task] || 10) : body.kind === 'revise' ? CONFIG.costs.revise : CONFIG.costs[detail];
-  let maxTokens = task === 'enhance' ? 2500 : task ? 12000 : (CONFIG.maxTokens[detail] || 24000);
-  if (task && JSON.stringify(messages).length > 120000) return json({ error: 'This model has too many parts to rig (max about 1,500).' }, 400);
+  const task = ['rig', 'animate', 'enhance', 'gui'].includes(body.kind) ? body.kind : null;
+  let cost = task === 'gui' && body.revise ? (CONFIG.costs.gui_revise || 5) : task ? (CONFIG.costs[task] || 10) : body.kind === 'revise' ? CONFIG.costs.revise : CONFIG.costs[detail];
+  let maxTokens = task === 'enhance' ? 2500 : task === 'gui' ? 20000 : task ? 12000 : (CONFIG.maxTokens[detail] || 24000);
+  if (task && task !== 'gui' && JSON.stringify(messages).length > 120000) return json({ error: 'This model has too many parts to rig (max about 1,500).' }, 400);
   // Rigging/animating is only for models this account generated itself (they live in its history)
   if (task === 'rig' || task === 'animate') {
     const raw = body.histId && await redis('GET', 'hi:' + String(body.histId));
@@ -86,6 +86,10 @@ export default async (req, context) => {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-internal': internalToken() }, body: JSON.stringify({ id }),
     });
     if (r.status >= 400) throw new Error('Background worker refused the job (' + r.status + ')');
+    await stat(task ? 'task_' + task : (body.fixOf ? 'fixes' : 'builds_started'));
+    if (!task && !body.fixOf && !body.revise) await stat('detail_' + String(body.detail || 'standard').replace(/[^a-z]/g, ''));
+    if (cost > 0 && !acct.unlimited) await stat('credits', cost);
+    await statUser(s.sub, 1);
   } catch (e) {
     if (cost > 0 && !acct.unlimited) await refund(acct.bucket, cost);
     if (ipKey) await redis('DECRBY', ipKey, cost).catch(() => {});

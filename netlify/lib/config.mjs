@@ -18,7 +18,7 @@ export const CONFIG = {
   freeCreditsPerNetworkPerMonth: 640,
 
   // What each action costs.
-  costs: { quick: 10, standard: 35, detailed: 75, revise: 10, rig: 30, animate: 45, enhance: 3 },
+  costs: { quick: 10, standard: 35, detailed: 75, revise: 10, rig: 30, animate: 45, enhance: 3, gui: 20, gui_revise: 5 },
 
   // Output cap per detail level (reasoning models also spend some of this on thinking).
   maxTokens: { quick: 16000, standard: 24000, detailed: 40000 },
