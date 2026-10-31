@@ -91,6 +91,12 @@ BEHAVIOR (only these types):
   {"type": "close",  "button": "CloseButton",    "target": "ShopWindow"}     // click hides target
   {"type": "tabs",   "buttons": ["SwordsTab","PetsTab"], "pages": ["SwordsPage","PetsPage"]}   // one page visible at a time, active tab highlighted
   {"type": "hover",  "buttons": ["BuyButton1","BuyButton2"]}                  // buttons grow slightly on hover
+  ANIMATIONS (use when animations are asked for):
+  {"type": "popin",  "target": "ShopWindow"}                                   // window pops in (scale bounce) whenever it opens
+  {"type": "bounce", "buttons": ["BuyButton1","ClaimButton"]}                  // buttons squish when pressed
+  {"type": "countup", "label": "CoinValue", "to": 125450, "prefix": "", "suffix": "", "short": false}   // number label counts up from 0 (short: true → 1.2M style)
+  {"type": "pulse",  "target": "ClaimButton"}                                  // gentle endless pulse to draw attention (1-2 per GUI max)
+  {"type": "spin",   "target": "GlowRays", "speed": 60}                        // endless rotation in degrees/second (sunburst / rays behind a reward)
 
 DESIGN RULES (this is what makes a GUI look professional):
 - Use SCALE for layout so it works on phones, tablets and PCs: main window e.g. size [0.5,0,0.6,0] centred with anchor [0.5,0.5], pos [0.5,0,0.5,0] and an "aspect" constraint. Offsets only for small fixed things (corner radius, padding, stroke, icon size inside a button).
@@ -109,5 +115,6 @@ DESIGN RULES (this is what makes a GUI look professional):
 - 25-120 nodes. More detail = better, but every node must be useful.
 
 ICON LIST (use only these names in "icon"; pick ones that fit — these are real coloured game icons): add_player, angel_heart, apple, arm, aura, aura2, auto_open, avocado, axe, backpack, bag, bait, balloon, banana, bird, blueberry, bomb, book, box, broken_heart, bubble_gum, bunny, burger, calendar, carrot, cart, cash, cat, chat, check, check_button, chest, clock, close, close_x, cloud, cloud2, clover, codes, coil, coin, cookie, cracked_egg, credit_card, crown, crystal, cursor, devil, diamond, dice, dog, downgrade, egg, exclamation, fire, fire2, friend, full_body, gamepad, gift, guilded, gum, hammer, heart, house, hoverboard, info, ingot, key, leaf, lemon, lightning, location_pin, lock, lucky_block, magical_teleport, magnet, medal, minus, music_off, music_on, newspaper, orange, pancake, paw, pencil, pizza, planet, player, players, plus, potion, premium, question, rip, robux, rocket, save, scroll, search, settings, shield, shoe, shovel, skip, skull, sound_off, sound_on, star, stats, strawberry, sword, target, teleporter, thunderstorm, ticket, toilet, torch, trade, trail, trash, trophy, tung, upgrade, verify, vip, warning, wheat, wheel.
+ICON VARIETY: in lists/grids give each item its OWN fitting icon, never the same icon repeated (pets → bunny, cat, dog, paw, devil, skull, tung, toilet; items → sword, shield, potion, bomb, axe, key, torch, scroll). Don't use giant icons as background decoration. Keep text labels inside their parent (no labels hanging below buttons where the next button will cover them).
 ICON STYLE: by default icons are full-colour (leave iconColor #ffffff). Add "iconStyle": "white" plus an iconColor to get a flat single-colour version tinted to that colour (good for small toolbar/nav buttons, close/check/plus/minus, settings). White versions exist for all except: angel_heart, aura, aura2, auto_open, bunny, cat, dog, magical_teleport, toilet, trail, tung, vip.`,
 };

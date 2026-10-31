@@ -16,7 +16,7 @@
 .gn.btn{cursor:pointer;transition:transform .12s ease,filter .12s}
 .gn.btn:hover{filter:brightness(1.08)}
 .gn.btn:active{transform:scale(.97)}
-.gn.grow:hover{transform:scale(1.05)}
+.gn.grow{transition:scale .12s}.gn.grow:hover{scale:1.05}
 .gn input{all:unset;position:absolute;inset:0;padding:0 8px;color:inherit;font:inherit}
 .gn .gicon{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
 .gn .gicon svg{width:100%;height:100%;max-width:100%;max-height:100%}
@@ -26,5 +26,22 @@
 #gHistory{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
 .ghist{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;padding:14px 16px;border-radius:14px;border:1px solid var(--line);background:var(--surface-2);color:var(--fg);cursor:pointer;font:inherit}
 .ghist b{font-size:15px}.ghist span{line-height:1.4}
-.gn .gstud{position:absolute;inset:0;border-radius:inherit;background-image:url(/stud-tile.png);background-repeat:repeat;pointer-events:none;z-index:0}
+.gn .gstud{position:absolute;inset:0;border-radius:inherit;background-position:center;box-shadow:inset 0 2px 0 rgba(255,255,255,.35),inset 0 -3px 0 rgba(0,0,0,.28),inset 0 0 0 1px rgba(0,0,0,.15);background-image:url(/studs.webp);opacity:.85;background-repeat:repeat;pointer-events:none;z-index:0}
 .gn .gicon.gimg{inset:auto;left:50%;top:50%;transform:translate(-50%,-50%);background-repeat:no-repeat;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}
+@keyframes gpop{from{scale:.6;opacity:.2}70%{scale:1.04;opacity:1}to{scale:1}}
+.gn.g-pop{animation:gpop .38s cubic-bezier(.3,1.4,.5,1)}
+.gn.g-bounce{transition:scale .18s cubic-bezier(.3,1.6,.5,1)}
+.gn.g-bounce:active{scale:.9;transition-duration:.06s}
+@keyframes gpulse{50%{scale:1.06}}
+.gn.g-pulse{animation:gpulse 1.6s ease-in-out infinite}
+@keyframes gspin{to{rotate:360deg}}
+.gn.g-spin{animation:gspin 6s linear infinite}
+.gimg{margin:10px 0 4px}
+.gimg #gImgBox{display:flex;align-items:center;gap:10px}
+.gimg #gImgBox[hidden]{display:none}
+.gimg img{width:64px;height:44px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,.15)}
+.gallery-grid{grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.gcard{display:flex;flex-direction:column;gap:6px;padding:12px}
+.gthumb{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:10px;background:linear-gradient(160deg,#2c4a2c,#16251a)}
+.gthumb .gmini{position:absolute;left:0;top:0;transform-origin:0 0;pointer-events:none}
+.gcard-actions{display:flex;gap:8px;margin-top:4px}

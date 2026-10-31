@@ -16,9 +16,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/app.css?v=202610311600">
+<link rel="stylesheet" href="/app.css?v=202610311900">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;700;900&family=Fredoka:wght@500;700&family=Luckiest+Guy&family=Bangers&family=Press+Start+2P&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/gui.css?v=202610311600">
+<link rel="stylesheet" href="/gui.css?v=202610311900">
 </head>
 <body data-page="studio" class="page-studio">
 <div class="backdrop" aria-hidden="true"></div>
@@ -43,6 +43,11 @@
       <div class="panel-title"><h1>GUI Maker</h1><span class="muted small">Describe a Roblox UI, get a ScreenGui</span></div>
       <label class="label" for="gBrief">What GUI do you need?</label>
       <textarea id="gBrief" rows="5" placeholder="A shop menu with 3 tabs (Swords, Pets, Gamepasses), item cards with a picture, name, price and Buy button, a close button, coins counter at the top…"></textarea>
+      <div class="gimg">
+        <button class="btn btn-ghost btn-sm" id="gImgPick" type="button">📷 Copy a GUI from a screenshot</button>
+        <div id="gImgBox" hidden><img id="gImgThumb" alt="Reference screenshot"><span class="muted small">The AI will recreate this GUI.</span><button class="btn btn-ghost btn-sm" id="gImgClear" type="button">Remove</button></div>
+        <input type="file" id="gImgIn" accept="image/png,image/jpeg,image/webp" hidden>
+      </div>
       <div class="chips" id="gChips"></div>
       <div class="row-2">
         <div><label class="label" for="gStyle">Style</label><select id="gStyle"></select></div>
@@ -52,6 +57,11 @@
         <input type="checkbox" id="gBehave" checked>
         <span class="switch-ui"></span>
         <span class="switch-text">Working buttons<small>tabs, open &amp; close, hover effects</small></span>
+      </label>
+      <label class="switch" style="margin-top:10px">
+        <input type="checkbox" id="gAnim" checked>
+        <span class="switch-ui"></span>
+        <span class="switch-text">Animations<small>windows pop in, buttons bounce, numbers count up</small></span>
       </label>
       <button class="btn btn-primary btn-block btn-lg" id="gGo" style="margin-top:16px">Generate GUI</button>
       <button class="btn btn-ghost btn-block" id="gStop" hidden>Stop</button>
@@ -67,6 +77,7 @@
         </div>
         <div class="out-actions">
           <div class="seg-small" id="gDevice"><button data-dev="pc" class="active">PC</button><button data-dev="tablet">Tablet</button><button data-dev="phone">Phone</button></div>
+          <button class="btn btn-sm" id="gShare" title="Share to the GUI gallery">Share</button>
           <button class="icon-btn" id="gCopy" title="Copy script" aria-label="Copy script"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button>
           <button class="icon-btn" id="gDownload" title="Download .lua" aria-label="Download .lua"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg></button>
         </div>
@@ -82,9 +93,15 @@
         <input id="gReviseIn" placeholder="Ask for a change — e.g. make it purple and add a Gamepasses tab">
         <button class="btn" id="gRevise">Revise</button>
       </div>
-      <p class="hint">Paste the script into Studio’s command bar (View → Command Bar) and press Enter — the ScreenGui appears in StarterGui.</p>
+      <p class="hint">Paste the script into Studio’s command bar (View → Command Bar) and press Enter — the ScreenGui appears in StarterGui. Or insert it in one click with the <a href="/plugin">Studio plugin</a>.</p>
     </section>
   </div>
+
+  <section class="panel history">
+    <div class="history-head"><div><h2>GUI gallery</h2><p class="muted small">GUIs shared by the community — press Remix to start from one.</p></div></div>
+    <div class="grid gallery-grid" id="gGallery"></div>
+    <button class="btn btn-ghost" id="gGalMore" hidden style="margin-top:12px">Load more</button>
+  </section>
 
   <section class="panel history">
     <div class="history-head"><div><h2>Your GUIs</h2><p class="muted small">Saved in this browser.</p></div></div>
@@ -95,7 +112,7 @@
   <div class="wrap footer-inner">
     <div class="foot-brand"><a class="brand" href="/"><svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect x="2" y="10" width="28" height="18" rx="4" fill="currentColor"/><rect x="7" y="5" width="7" height="6" rx="2" fill="currentColor"/><rect x="18" y="5" width="7" height="6" rx="2" fill="currentColor"/></svg><span>Brickwright</span></a><p class="muted small">Describe it. Get it in bricks.<br>Classic studded Roblox models from a sentence.</p></div>
     <div class="foot-cols">
-      <div><h4>Product</h4><a href="/studio">Studio</a><a href="/explore">Explore</a><a href="/animate">Animate</a><a href="/gui">GUI Maker</a><a href="/#pricing">Pricing</a></div>
+      <div><h4>Product</h4><a href="/studio">Studio</a><a href="/explore">Explore</a><a href="/animate">Animate</a><a href="/gui">GUI Maker</a><a href="/plugin">Studio plugin</a><a href="/#pricing">Pricing</a></div>
       <div><h4>Help</h4><a href="/#faq">FAQ</a><a href="/#how">How it works</a></div>
       <div><h4>Legal</h4><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
     </div>
@@ -106,9 +123,9 @@
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <script src="/vendor/three.min.js"></script>
 <script src="/vendor/fengari-web.js"></script>
-<script src="/vendor/runner.js?v=202610311600"></script>
-<script src="/core.js?v=202610311600"></script>
-<script src="/app.js?v=202610311600"></script>
-<script src="/gui.js?v=202610311600"></script>
+<script src="/vendor/runner.js?v=202610311900"></script>
+<script src="/core.js?v=202610311900"></script>
+<script src="/app.js?v=202610311900"></script>
+<script src="/gui.js?v=202610311900"></script>
 </body>
 </html>

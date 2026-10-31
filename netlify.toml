@@ -42,6 +42,11 @@
   status = 200
 
 [[redirects]]
+  from = "/plugin"
+  to = "/plugin.html"
+  status = 200
+
+[[redirects]]
   from = "/gui"
   to = "/gui.html"
   status = 200

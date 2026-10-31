@@ -48,7 +48,7 @@
 
   // ------------------------------------------------------------------ Lua runtime (runs scripts in the browser)
   var preludeText = null;
-  var preludeReady = fetch('/vendor/prelude.lua?v=202610311600').then(function(r){ return r.text(); }).then(function(t){ preludeText = t; });
+  var preludeReady = fetch('/vendor/prelude.lua?v=202610311900').then(function(r){ return r.text(); }).then(function(t){ preludeText = t; });
   async function runScript(src){
     await preludeReady;
     try { return window.runLuauPreview(window.fengari, preludeText, C.BRICK_COLOR_FULL, src); }
@@ -389,6 +389,7 @@
       '<div class="menu-pop" id="menuPop" hidden><div class="who">' + esc(name) + '<small>' + esc(me.planName || 'Free') + ' plan' + (me.resetsAt ? ' · refills ' + fmtDate(me.resetsAt) : '') + '</small></div>' +
       (me.hasBilling ? '<button data-action="portal">Manage subscription</button>' : '<button data-action="pricing">Get more credits</button>') +
       '<button data-action="promo">Redeem a code</button>' +
+      '<a class="menu-link" href="/plugin">Studio plugin</a>' +
       (me.admin ? '<a class="menu-link" href="/admin">Admin dashboard</a>' : '') +
       '<button data-action="signout">Sign out</button></div></div>';
     $('#avatarBtn').onclick = function(e){ e.stopPropagation(); $('#menuPop').hidden = !$('#menuPop').hidden; };

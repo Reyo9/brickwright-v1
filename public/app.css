@@ -453,3 +453,11 @@ textarea:focus,input:focus,select:focus{background:#0d1119;border-color:var(--ac
 .btn:disabled,.btn:disabled:hover{transform:none;opacity:1;cursor:not-allowed;background:#1a1f2c;border-color:#262e40;color:#5d6680;text-shadow:none;box-shadow:0 3px 0 #0008}
 .menu-pop .menu-link{display:block;padding:9px 10px;border-radius:9px;font-size:14px;color:var(--fg);text-decoration:none}
 .menu-pop .menu-link:hover{background:var(--surface-2)}
+.plugin-page .steps{display:grid;grid-template-columns:1fr;max-width:720px;gap:18px;padding-left:20px;margin:22px 0}
+.plugin-page .steps li{line-height:1.6}
+.plugin-page .steps .btn{margin-top:8px}
+.plugin-code{margin-top:10px;display:grid;gap:8px;justify-items:start}
+.plugin-code #pCode{display:flex;gap:8px;flex-wrap:wrap}
+.plugin-code #pCode[hidden]{display:none}
+.code-in{flex:1;min-width:220px;font-family:"JetBrains Mono",monospace;font-size:13px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.3);color:inherit}
+.plugin-page h1{font-size:clamp(28px,5vw,44px)}

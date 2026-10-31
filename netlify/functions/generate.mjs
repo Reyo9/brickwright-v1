@@ -31,7 +31,7 @@ export default async (req, context) => {
   if (images > 1) return json({ error: 'Only one reference image per build.' }, 400);
   const detail = ['quick', 'standard', 'detailed'].includes(body.detail) ? body.detail : 'standard';
   const task = ['rig', 'animate', 'enhance', 'gui'].includes(body.kind) ? body.kind : null;
-  let cost = task === 'gui' && body.revise ? (CONFIG.costs.gui_revise || 5) : task ? (CONFIG.costs[task] || 10) : body.kind === 'revise' ? CONFIG.costs.revise : CONFIG.costs[detail];
+  let cost = task === 'gui' && body.revise ? (CONFIG.costs.gui_revise || 15) : task ? (CONFIG.costs[task] || 10) : body.kind === 'revise' ? CONFIG.costs.revise : CONFIG.costs[detail];
   let maxTokens = task === 'enhance' ? 2500 : task === 'gui' ? 20000 : task ? 12000 : (CONFIG.maxTokens[detail] || 24000);
   if (task && task !== 'gui' && JSON.stringify(messages).length > 120000) return json({ error: 'This model has too many parts to rig (max about 1,500).' }, 400);
   // Rigging/animating is only for models this account generated itself (they live in its history)

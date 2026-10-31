@@ -117,7 +117,7 @@
       if (n.list && typeof n.list === 'object') o.list = {dir: n.list.dir === 'Horizontal' ? 'Horizontal' : 'Vertical', padding: num(n.list.padding, 0),
         hAlign: ['Left', 'Right', 'Center'].indexOf(n.list.hAlign) >= 0 ? n.list.hAlign : 'Left', vAlign: ['Top', 'Bottom', 'Center'].indexOf(n.list.vAlign) >= 0 ? n.list.vAlign : 'Top'};
       else if (n.grid && typeof n.grid === 'object') o.grid = {cell: udim2(n.grid.cell, [0, 100, 0, 100]), padding: udim2(n.grid.padding, [0, 5, 0, 5])};
-      if (n.studs) o.studs = typeof n.studs === 'number' ? Math.max(8, Math.min(80, n.studs)) : 24;
+      if (n.studs) o.studs = typeof n.studs === 'number' ? Math.max(8, Math.min(80, n.studs)) : 16;
       if (n.aspect != null && num(n.aspect, 0) > 0) o.aspect = num(n.aspect, 1);
       o.children = (Array.isArray(n.children) ? n.children : []).slice(0, 200).map(function(c){ return fix(c, depth + 1); }).filter(Boolean);
       return o;
@@ -129,9 +129,17 @@
       if (!b || typeof b !== 'object') return false;
       if (b.type === 'toggle' || b.type === 'close') return names[b.button] && names[b.target];
       if (b.type === 'tabs') return Array.isArray(b.buttons) && Array.isArray(b.pages) && b.buttons.length && b.buttons.length === b.pages.length && b.buttons.concat(b.pages).every(function(x){ return names[x]; });
-      if (b.type === 'hover') return Array.isArray(b.buttons) && b.buttons.some(function(x){ return names[x]; });
+      if (b.type === 'hover' || b.type === 'bounce') return Array.isArray(b.buttons) && b.buttons.some(function(x){ return names[x]; });
+      if (b.type === 'popin' || b.type === 'pulse' || b.type === 'spin') return names[b.target];
+      if (b.type === 'countup') return names[b.label] && isFinite(Number(b.to));
       return false;
-    }).map(function(b){ return b.type === 'hover' ? {type: 'hover', buttons: b.buttons.filter(function(x){ return names[x]; })} : b; });
+    }).map(function(b){
+      if (b.type === 'hover' || b.type === 'bounce') return {type: b.type, buttons: b.buttons.filter(function(x){ return names[x]; })};
+      if (b.type === 'countup') return {type: 'countup', label: b.label, to: Math.max(0, Math.min(1e12, Number(b.to))), prefix: String(b.prefix || '').slice(0, 6), suffix: String(b.suffix || '').slice(0, 8), short: !!b.short};
+      if (b.type === 'spin') return {type: 'spin', target: b.target, speed: Math.max(10, Math.min(720, Number(b.speed) || 60))};
+      if (b.type === 'popin' || b.type === 'pulse') return {type: b.type, target: b.target};
+      return b;
+    });
     var count = 0; [out.root].concat(out.extra).forEach(function(r){ walk(r, function(){ count++; }); });
     out.count = count;
     return out;
@@ -203,7 +211,7 @@
       else ic.textContent = ICON_GLYPH[n.icon] || '▢';
       el.appendChild(ic); el.dataset.icon = '1';
     }
-    if (n.studs) { var sd = document.createElement('span'); sd.className = 'gstud'; sd.style.backgroundSize = n.studs + 'px ' + n.studs + 'px'; el.insertBefore(sd, el.firstChild); }
+    if (n.studs) { var sd = document.createElement('span'); sd.className = 'gstud'; sd.style.backgroundSize = (n.studs*4) + 'px ' + (n.studs*4) + 'px'; el.insertBefore(sd, el.firstChild); }
     if (/Button$/.test(n.class)) el.classList.add('btn');
     (n.children || []).forEach(function(c){ el.appendChild(renderNode(c, n)); });
     return el;
@@ -249,7 +257,37 @@
     $('#gInfo').textContent = spec.count + ' UI objects · ' + spec.behaviors.length + ' behaviours';
   }
   function byName(name){ return screenEl.querySelector('[data-name="' + name + '"]'); }
-  function showEl(el, on){ if (!el) return; el.style.display = on ? '' : 'none'; if (on) requestAnimationFrame(function(){ finishLayout(el); }); }
+  function showEl(el, on){
+    if (!el) return; el.style.display = on ? '' : 'none';
+    if (on) {
+      requestAnimationFrame(function(){ finishLayout(el); });
+      if (spec && spec.behaviors.some(function(b){ return b.type === 'popin' && b.target === el.dataset.name; })) { el.classList.remove('g-pop'); void el.offsetWidth; el.classList.add('g-pop'); }
+      runCountups(el);
+    }
+  }
+  function fmtNum(n, b){
+    if (b.short) { var u = [[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e3,'K']]; for (var i = 0; i < u.length; i++) if (n >= u[i][0]) return b.prefix + (n / u[i][0]).toFixed(n / u[i][0] >= 100 ? 0 : 1).replace(/\.0$/, '') + u[i][1] + b.suffix; }
+    return b.prefix + Math.round(n).toLocaleString('en-US') + b.suffix;
+  }
+  function runCountups(scope){
+    if (!spec) return;
+    spec.behaviors.forEach(function(b){
+      if (b.type !== 'countup') return;
+      var el = byName(b.label); if (!el || (scope && scope !== screenEl && !scope.contains(el))) return;
+      var t = el.querySelector('.gt') || el; var t0 = performance.now(), dur = 1200, id = (el._cu = (el._cu || 0) + 1);
+      (function step(now){ if (el._cu !== id) return; var k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3); t.textContent = fmtNum(b.to * e, b); if (k < 1) requestAnimationFrame(step); })(t0);
+    });
+  }
+  function applyAnims(){
+    if (!spec) return;
+    spec.behaviors.forEach(function(b){
+      if (b.type === 'bounce') b.buttons.forEach(function(n){ var el = byName(n); if (el) el.classList.add('g-bounce'); });
+      if (b.type === 'pulse') { var el = byName(b.target); if (el) el.classList.add('g-pulse'); }
+      if (b.type === 'spin') { var el2 = byName(b.target); if (el2) { el2.classList.add('g-spin'); el2.style.animationDuration = (360 / b.speed) + 's'; } }
+      if (b.type === 'popin') { var el3 = byName(b.target); if (el3 && el3.style.display !== 'none') el3.classList.add('g-pop'); }
+    });
+    runCountups(screenEl);
+  }
   function selectTab(b, i){
     b.pages.forEach(function(p, k){ showEl(byName(p), k === i); });
     b.buttons.forEach(function(btn, k){ var el = byName(btn); if (el) el.style.filter = k === i ? 'brightness(1.35)' : ''; });
@@ -264,6 +302,7 @@
     });
   }
   function applyHover(){
+    applyAnims();
     spec.behaviors.forEach(function(b){ if (b.type === 'hover') b.buttons.forEach(function(n){ var el = byName(n); if (el) el.classList.add('grow'); }); });
   }
 
@@ -320,7 +359,7 @@
       if (n.list) L.push('new("UIListLayout", {FillDirection = Enum.FillDirection.' + n.list.dir + ', Padding = UDim.new(0, ' + n.list.padding + '), HorizontalAlignment = Enum.HorizontalAlignment.' + n.list.hAlign +
         ', VerticalAlignment = Enum.VerticalAlignment.' + n.list.vAlign + ', SortOrder = Enum.SortOrder.LayoutOrder}, ' + v + ')');
       if (n.grid) L.push('new("UIGridLayout", {CellSize = ' + u2(n.grid.cell) + ', CellPadding = ' + u2(n.grid.padding) + ', SortOrder = Enum.SortOrder.LayoutOrder}, ' + v + ')');
-      if (n.studs) { hasStuds = true; L.push('do local s = new("ImageLabel", {Name = "Studs", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Image = STUD_IMAGE, ScaleType = Enum.ScaleType.Tile, TileSize = UDim2.fromOffset(' + n.studs + ', ' + n.studs + '), ImageTransparency = 0.15, ZIndex = ' + ((n.zIndex || 1) - 1) + '}, ' + v + ')' + (n.corner ? ' new("UICorner", {CornerRadius = UDim.new(' + n.corner[0] + ', ' + n.corner[1] + ')}, s)' : '') + ' end'); }
+      if (n.studs) { hasStuds = true; L.push('do local s = new("ImageLabel", {Name = "Studs", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Image = STUD_IMAGE, ScaleType = Enum.ScaleType.Tile, TileSize = UDim2.fromOffset(' + (n.studs*4) + ', ' + (n.studs*4) + '), ImageTransparency = 0.15, ZIndex = ' + ((n.zIndex || 1) - 1) + '}, ' + v + ')' + (n.corner ? ' new("UICorner", {CornerRadius = UDim.new(' + n.corner[0] + ', ' + n.corner[1] + ')}, s)' : '') + ' end'); }
       if (n.aspect) L.push('new("UIAspectRatioConstraint", {AspectRatio = ' + n.aspect + '}, ' + v + ')');
       (n.children || []).forEach(function(c, i){ var cv = emit(c, v); if (n.list || n.grid) L.push(cv + '.LayoutOrder = ' + (i + 1)); });
       return v;
@@ -349,19 +388,35 @@
             '\t\tfor k, btn in ipairs(buttons) do btn.BackgroundColor3 = (k == i) and base[k]:Lerp(Color3.new(1, 1, 1), 0.25) or base[k] end', '\tend',
             '\tfor i, btn in ipairs(buttons) do btn.Activated:Connect(function() select(i) end) end', '\tselect(1)', 'end');
         }
+        if (b.type === 'popin') S.push('do local t = find(' + lstr(b.target) + ')', '\tif t then', '\t\tlocal sc = t:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", t)',
+          '\t\tlocal function pop() if t.Visible then sc.Scale = 0.6 TweenService:Create(sc, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play() end end',
+          '\t\tt:GetPropertyChangedSignal("Visible"):Connect(pop) pop()', '\tend', 'end');
+        if (b.type === 'bounce') S.push('for _, n in ipairs({' + b.buttons.map(lstr).join(', ') + '}) do', '\tlocal b = find(n)', '\tif b then',
+          '\t\tlocal sc = b:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", b)',
+          '\t\tb.MouseButton1Down:Connect(function() TweenService:Create(sc, TweenInfo.new(0.08), {Scale = 0.9}):Play() end)',
+          '\t\tb.MouseButton1Up:Connect(function() TweenService:Create(sc, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play() end)',
+          '\t\tb.MouseLeave:Connect(function() TweenService:Create(sc, TweenInfo.new(0.15), {Scale = 1}):Play() end)', '\tend', 'end');
+        if (b.type === 'pulse') S.push('do local t = find(' + lstr(b.target) + ')', '\tif t then', '\t\tlocal sc = t:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", t)',
+          '\t\tTweenService:Create(sc, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {Scale = 1.06}):Play()', '\tend', 'end');
+        if (b.type === 'spin') S.push('do local t = find(' + lstr(b.target) + ')', '\tif t then task.spawn(function() while t.Parent do t.Rotation = (t.Rotation + ' + b.speed + ' * task.wait()) % 360 end end) end', 'end');
+        if (b.type === 'countup') S.push('do local t = find(' + lstr(b.label) + ')', '\tif t then', '\t\tlocal target, prefix, suffix, short = ' + b.to + ', ' + lstr(b.prefix) + ', ' + lstr(b.suffix) + ', ' + b.short,
+          '\t\tlocal function fmt(n)', '\t\t\tif short then for _, u in ipairs({{1e12, "T"}, {1e9, "B"}, {1e6, "M"}, {1e3, "K"}}) do if n >= u[1] then return prefix .. string.format(n / u[1] >= 100 and "%.0f" or "%.1f", n / u[1]):gsub("%.0$", "") .. u[2] .. suffix end end end',
+          '\t\t\tlocal s = tostring(math.floor(n + 0.5)):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")', '\t\t\treturn prefix .. s .. suffix', '\t\tend',
+          '\t\tlocal v = Instance.new("NumberValue") v.Changed:Connect(function(n) t.Text = fmt(n) end)', '\t\tt.Text = fmt(0)',
+          '\t\tTweenService:Create(v, TweenInfo.new(1.2, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {Value = target}):Play()', '\tend', 'end');
         if (b.type === 'hover') S.push('for _, n in ipairs({' + b.buttons.map(lstr).join(', ') + '}) do', '\tlocal b = find(n)', '\tif b then',
           '\t\tlocal s = b.Size', '\t\tlocal big = UDim2.new(s.X.Scale * 1.05, s.X.Offset * 1.05, s.Y.Scale * 1.05, s.Y.Offset * 1.05)',
           '\t\tb.MouseEnter:Connect(function() TweenService:Create(b, TweenInfo.new(0.12), {Size = big}):Play() end)',
           '\t\tb.MouseLeave:Connect(function() TweenService:Create(b, TweenInfo.new(0.12), {Size = s}):Play() end)', '\tend', 'end');
       });
-      L.push('-- Button behaviours (tabs, open/close, hover)', 'local ls = Instance.new("LocalScript")', 'ls.Name = "GuiBehaviours"', 'ls.Source = ' + '[==[\n' + S.join('\n') + '\n]==]', 'ls.Parent = gui', '');
+      L.push('-- Button behaviours and animations', 'local ls = Instance.new("LocalScript")', 'ls.Name = "GuiBehaviours"', 'ls.Source = ' + '[==[\n' + S.join('\n') + '\n]==]', 'ls.Parent = gui', '');
     }
     L.push('gui.Parent = StarterGui', 'pcall(function() game:GetService("Selection"):Set({gui}) end)', 'print("' + sp.name + ' added to StarterGui — made with Brickwright")');
     return L.join('\n');
   }
 
   // ---------------------------------------------------------------- page logic
-  var current = {spec: null, raw: '', notes: '', brief: ''}, busy = false, job = null;
+  var current = {spec: null, raw: '', notes: '', brief: ''}, busy = false, job = null, refImage = null;
   function setStatus(t, cls){ var s = $('#gStatus'); s.className = 'status' + (cls ? ' ' + cls : ''); $('#gStatusText').textContent = t; }
   function show(sp, notes){
     spec = sp; current.spec = sp; render(); applyHover();
@@ -379,6 +434,8 @@
     var style = STYLES[$('#gStyle').selectedIndex] || STYLES[0];
     return 'Design this Roblox GUI: "' + brief + '"\n\nStyle: ' + style[1] + '.\nAccent colour: ' + $('#gAccent').value +
       '\n' + ($('#gBehave').checked ? 'Add behaviors for every tab group, open button and close button.' : 'No behaviors (leave "behaviors" empty).') +
+      ($('#gAnim').checked ? '\nAdd ANIMATIONS: popin on every window that opens, bounce on the main buttons, countup on currency/number labels, and pulse on the single most important button.' : '') +
+      (refImage ? '\nA screenshot of a GUI is attached — recreate its layout, colours, proportions and style as closely as possible with real Roblox UI (use the closest icons from the ICON LIST).' : '') +
       '\nIt must look great on PC and phones (use Scale + an aspect constraint on main windows). Answer with the JSON block, then NOTES.';
   }
   async function runJob(messages, revise){
@@ -399,15 +456,16 @@
   async function generate(){
     if (busy) return;
     var brief = $('#gBrief').value.trim();
-    if (!brief) { setStatus('Describe the GUI you want first.', 'err'); $('#gBrief').focus(); return; }
+    if (!brief && refImage) brief = 'Recreate the GUI in the attached screenshot';
+    if (!brief) { setStatus('Describe the GUI you want first (or add a screenshot).', 'err'); $('#gBrief').focus(); return; }
     if (!B.session()) { setStatus('Sign in to generate GUIs.', 'err'); B.openLogin(); return; }
     setBusy(true);
     try {
-      var msgs = [{role: 'user', content: promptFor(brief)}];
+      var msgs = [{role: 'user', content: refImage ? [{type: 'text', text: promptFor(brief)}, {type: 'image_url', image_url: {url: refImage}}] : promptFor(brief)}];
       var text = await runJob(msgs, false);
       var sp = sanitize(extractJSON(text));
       current = {spec: sp, raw: text, notes: notesOf(text), brief: brief, msgs: msgs};
-      show(sp, current.notes); saveLocal(); setStatus('Done — ' + sp.count + ' UI objects. Click the buttons in the preview to try it.', 'ok');
+      show(sp, current.notes); saveLocal(); saveCloud(); setStatus('Done — ' + sp.count + ' UI objects. Click the buttons in the preview to try it.', 'ok');
     } catch (e) { setStatus(e.message || 'Something went wrong — try again.', 'err'); }
     setBusy(false);
   }
@@ -425,13 +483,13 @@
       var text = await runJob(msgs, true);
       var sp = sanitize(extractJSON(text));
       current = {spec: sp, raw: text, notes: notesOf(text), brief: current.brief, msgs: current.msgs};
-      show(sp, current.notes); saveLocal(); $('#gReviseIn').value = ''; setStatus('Updated — ' + sp.count + ' UI objects.', 'ok');
+      show(sp, current.notes); saveLocal(); saveCloud(); $('#gReviseIn').value = ''; setStatus('Updated — ' + sp.count + ' UI objects.', 'ok');
     } catch (e) { setStatus(e.message || 'Something went wrong — try again.', 'err'); }
     setBusy(false);
   }
   function stripCount(sp){ var c = JSON.parse(JSON.stringify(sp)); delete c.count; return c; }
   function renderCost(){
-    var me = B.getMe(), c = (me && me.costs && me.costs.gui) || 20, r = (me && me.costs && me.costs.gui_revise) || 5;
+    var me = B.getMe(), c = (me && me.costs && me.costs.gui) || 40, r = (me && me.costs && me.costs.gui_revise) || 15;
     $('#gGo').textContent = 'Generate GUI · ' + c + ' credits';
     $('#gCost').textContent = 'Revisions cost ' + r + ' credits' + (me && me.signedIn ? '' : ' · sign in to get free credits every month');
   }
@@ -445,6 +503,65 @@
       localStorage.setItem(HKEY, JSON.stringify(list.slice(0, 20)));
     } catch (e) {}
     renderHistory();
+  }
+  function saveCloud(){
+    if (!B.session() || !current.spec) return;
+    B.api('/api/plugin', {method: 'POST', body: {action: 'saveGui', name: current.spec.name, brief: current.brief, script: toLuau(current.spec)}}).catch(function(){});
+  }
+  // screenshot → GUI
+  function pickImage(file){
+    if (!file || !/^image\//.test(file.type)) return;
+    var img = new Image(), url = URL.createObjectURL(file);
+    img.onload = function(){
+      var k = Math.min(1, 1280 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      var q = 0.85, out = c.toDataURL('image/jpeg', q);
+      while (out.length > 700000 && q > 0.4) { q -= 0.15; out = c.toDataURL('image/jpeg', q); }
+      refImage = out; URL.revokeObjectURL(url);
+      $('#gImgThumb').src = out; $('#gImgBox').hidden = false; $('#gImgPick').hidden = true;
+    };
+    img.src = url;
+  }
+  function clearImage(){ refImage = null; $('#gImgBox').hidden = true; $('#gImgPick').hidden = false; $('#gImgIn').value = ''; }
+  // gallery
+  var galNext = 0;
+  async function share(){
+    if (!current.spec) return;
+    if (!B.session()) { B.openLogin(); return; }
+    try { await B.api('/api/guis', {method: 'POST', body: {spec: stripCount(current.spec), brief: current.brief, style: STYLES[$('#gStyle').selectedIndex][0]}}); B.toast('Shared to the GUI gallery!'); loadGallery(true); }
+    catch (e) { B.toast(e.message || 'Could not share.', true); }
+  }
+  function miniPreview(sp, box){
+    // renders a scaled-down static preview into box
+    try {
+      var s2 = sanitize(sp), scr = document.createElement('div'); scr.className = 'gscreen gmini'; scr.style.width = '1280px'; scr.style.height = '720px';
+      box.appendChild(scr);
+      [s2.root].concat(s2.extra).forEach(function(n){ scr.appendChild(renderNode(n, null)); });
+      s2.behaviors.forEach(function(b){ if (b.type === 'tabs') b.pages.forEach(function(p, k){ var el = scr.querySelector('[data-name="' + p + '"]'); if (el) el.style.display = k ? 'none' : ''; }); });
+      var fit = function(){ var k = box.clientWidth / 1280; scr.style.transform = 'scale(' + k + ')'; };
+      fit(); requestAnimationFrame(function(){ fit(); finishLayout(scr); });
+    } catch (e) {}
+  }
+  async function loadGallery(reset){
+    var el = $('#gGallery'); if (!el) return;
+    if (reset) { galNext = 0; el.innerHTML = ''; }
+    try {
+      var j = await B.api('/api/guis?offset=' + galNext);
+      if (!j.items.length && !galNext) el.innerHTML = '<p class="muted small">No shared GUIs yet — generate one and press Share.</p>';
+      j.items.forEach(function(it){
+        var card = document.createElement('div'); card.className = 'card gcard';
+        card.innerHTML = '<div class="gthumb"></div><b>' + esc(it.name) + '</b><span class="muted small">' + esc((it.style ? it.style + ' · ' : '') + (it.brief || '').slice(0, 80)) + '</span>' +
+          '<div class="gcard-actions"><button class="btn btn-sm btn-primary" data-act="remix">Remix</button>' + (it.mine ? '<button class="btn btn-sm btn-ghost" data-act="del">Delete</button>' : '') + '</div>';
+        el.appendChild(card);
+        miniPreview(it.spec, card.querySelector('.gthumb'));
+        card.querySelector('[data-act="remix"]').onclick = function(){
+          var sp = sanitize(it.spec); current = {spec: sp, raw: 'gallery', notes: '', brief: it.brief || it.name, msgs: null};
+          $('#gBrief').value = it.brief || ''; show(sp, 'Remixing "' + it.name + '" from the gallery — ask for changes below (15 credits each).'); setStatus('Loaded from the gallery. Use Revise to make it yours.', 'ok'); window.scrollTo({top: 0, behavior: 'smooth'});
+        };
+        var d = card.querySelector('[data-act="del"]'); if (d) d.onclick = async function(){ try { await B.api('/api/guis?id=' + encodeURIComponent(it.id), {method: 'DELETE'}); card.remove(); } catch (e) { B.toast(e.message, true); } };
+      });
+      galNext = j.next; $('#gGalMore').hidden = j.next == null;
+    } catch (e) { el.innerHTML = '<p class="muted small">Could not load the gallery.</p>'; }
   }
   function renderHistory(){
     var list = loadLocal(), el = $('#gHistory');
@@ -483,6 +600,13 @@
     $('#gDownload').onclick = download;
     renderCost(); document.addEventListener('bw:me', renderCost);
     renderHistory();
+    $('#gImgPick').onclick = function(){ $('#gImgIn').click(); };
+    $('#gImgIn').onchange = function(){ pickImage(this.files[0]); };
+    $('#gImgClear').onclick = clearImage;
+    document.addEventListener('paste', function(e){ var f = [].slice.call((e.clipboardData && e.clipboardData.files) || [])[0]; if (f && /^image\//.test(f.type)) pickImage(f); });
+    $('#gShare').onclick = share;
+    $('#gGalMore').onclick = function(){ loadGallery(false); };
+    loadGallery(true);
     show(sanitize(EXAMPLE), 'A built-in example. Describe your own GUI and press Generate.');
   }
   // exposed for tests
