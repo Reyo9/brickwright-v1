@@ -52,7 +52,7 @@
         {class: 'TextLabel', name: 'Title', pos: [0.04,0,0,0], size: [0.5,0,1,0], bgT: 1, text: 'SHOP', textColor: '#1a0b03', font: 'GothamBlack', textScaled: true, xAlign: 'Left', padding: [10,0,10,0]},
         {class: 'Frame', name: 'CoinsPill', pos: [0.62,0,0.5,0], anchor: [0,0.5], size: [0.22,0,0.6,0], bg: '#1a0b03', bgT: 0.35, corner: 99, children: [
           {class: 'ImageLabel', name: 'CoinIcon', pos: [0.06,0,0.5,0], anchor: [0,0.5], size: [0,26,0,26], bgT: 1, icon: 'coin'},
-          {class: 'TextLabel', name: 'Coins', pos: [0.3,0,0,0], size: [0.65,0,1,0], bgT: 1, text: '12,450', textColor: '#ffffff', font: 'GothamBold', textSize: 18, xAlign: 'Left'}]},
+          {class: 'TextLabel', name: 'Coins', pos: [0.3,0,0,0], size: [0.65,0,1,0], bgT: 1, text: '12,450', textColor: '#ffffff', font: 'GothamBold', textSize: 18, textScaled: true, xAlign: 'Left'}]},
         {class: 'TextButton', name: 'CloseButton', pos: [0.97,0,0.5,0], anchor: [1,0.5], size: [0,40,0,40], bg: '#1a0b03', bgT: 0.3, corner: 10, text: 'X', textColor: '#ffffff', font: 'GothamBlack', textSize: 20}]},
       {class: 'Frame', name: 'Tabs', pos: [0.03,0,0.18,0], size: [0.94,0,0.09,0], bgT: 1, list: {dir: 'Horizontal', padding: 8}, children: [
         {class: 'TextButton', name: 'SwordsTab', size: [0.2,0,1,0], bg: '#262b38', corner: 10, text: 'Swords', textColor: '#ffffff', font: 'GothamBold', textSize: 16},
@@ -415,6 +415,68 @@
     return L.join('\n');
   }
 
+  // ---------------------------------------------------------------- layout checker
+  // Measures the rendered preview (PC and phone): elements hanging outside their parent or off-screen,
+  // text that doesn't fit its box, and buttons/labels accidentally stacked on top of each other.
+  var TEXTY = {TextLabel: 1, TextButton: 1, TextBox: 1, ImageButton: 1};
+  function inter(a, b){ var w = Math.min(a.right, b.right) - Math.max(a.left, b.left), h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top); return w > 0 && h > 0 ? w * h : 0; }
+  function visibleEl(el){ for (var e = el; e && e !== screenEl; e = e.parentElement) if (e.style && e.style.display === 'none') return false; return true; }
+  function checkOnce(sp, devName){
+    var probs = [], scr = screenEl.getBoundingClientRect(), k = scr.width / (screenEl.offsetWidth || 1), nodes = {};
+    [sp.root].concat(sp.extra).forEach(function(r){ walk(r, function(n, parent){ nodes[n.name] = {n: n, parent: parent}; }); });
+    Object.keys(nodes).forEach(function(name){
+      var n = nodes[name].n, par = nodes[name].parent, el = byName(name);
+      if (!el || !visibleEl(el)) return;
+      var r = el.getBoundingClientRect(), area = r.width * r.height; if (area < 4) return;
+      var pr = par ? byName(par.name).getBoundingClientRect() : scr;
+      if (!par || par.class !== 'ScrollingFrame') {
+        var out = 1 - inter(r, pr) / area, small = area < 0.15 * pr.width * pr.height;
+        if (out > (small ? 0.5 : 0.12)) probs.push((par ? '"' + name + '" sticks out of its parent "' + par.name + '"' : '"' + name + '" goes off the screen') + ' on ' + devName + ' (' + Math.round(out * 100) + '% outside) — move/resize it to fit inside.');
+      }
+      if (TEXTY[n.class] && n.text && !n.textScaled) {
+        var t = el.querySelector(':scope > .gt');
+        if (t && t.scrollHeight > t.clientHeight + 3) probs.push('Text in "' + name + '" ("' + String(n.text).slice(0, 30) + '") doesn\'t fit its box on ' + devName + ' — make the box bigger, the text shorter, or set "textScaled": true.');
+      }
+    });
+    // accidental overlaps between text/buttons that share a parent (not managed by a list/grid layout)
+    Object.keys(nodes).forEach(function(name){
+      var n = nodes[name].n; if (n.list || n.grid || !n.children) return;
+      var kids = n.children.filter(function(c){ return TEXTY[c.class] && byName(c.name) && visibleEl(byName(c.name)); });
+      for (var a = 0; a < kids.length; a++) for (var b = a + 1; b < kids.length; b++) {
+        var ra = byName(kids[a].name).getBoundingClientRect(), rb = byName(kids[b].name).getBoundingClientRect();
+        var ov = inter(ra, rb), mn = Math.min(ra.width * ra.height, rb.width * rb.height);
+        if (mn > 4 && ov > 0.4 * mn) probs.push('"' + kids[a].name + '" and "' + kids[b].name + '" overlap on ' + devName + ' — give them separate positions.');
+      }
+    });
+    return probs;
+  }
+  function wait(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+  async function checkLayout(sp){
+    var keep = device, all = [];
+    stageEl.classList.add('gcheck');
+    try {
+      for (var d of ['pc', 'phone']) {
+        device = d; spec = sp; render(); await wait(60); finishLayout(screenEl); await wait(30);
+        checkOnce(sp, d === 'pc' ? 'PC' : 'phone').forEach(function(p){ if (all.indexOf(p) < 0 && all.length < 14) all.push(p); });
+      }
+    } catch (e) {}
+    stageEl.classList.remove('gcheck');
+    device = keep; render(); applyHover();
+    return all;
+  }
+  async function autoFixLayout(sp, msgs){
+    var probs = await checkLayout(sp);
+    if (!probs.length || !lastGuiJob) return sp;
+    setStatus('Fixing ' + probs.length + ' layout problem' + (probs.length === 1 ? '' : 's') + ' (free)…');
+    try {
+      var text = await runJob(msgs, false, {fixOf: lastGuiJob, problems: probs.join('\n')});
+      var sp2 = sanitize(extractJSON(text));
+      var probs2 = await checkLayout(sp2);
+      if (probs2.length < probs.length) { current.raw = text; current.notes = notesOf(text) || current.notes; return sp2; }
+    } catch (e) {}
+    return sp;
+  }
+
   // ---------------------------------------------------------------- page logic
   var current = {spec: null, raw: '', notes: '', brief: ''}, busy = false, job = null, refImage = null;
   function setStatus(t, cls){ var s = $('#gStatus'); s.className = 'status' + (cls ? ' ' + cls : ''); $('#gStatusText').textContent = t; }
@@ -438,8 +500,11 @@
       (refImage ? '\nA screenshot of a GUI is attached — recreate its layout, colours, proportions and style as closely as possible with real Roblox UI (use the closest icons from the ICON LIST).' : '') +
       '\nIt must look great on PC and phones (use Scale + an aspect constraint on main windows). Answer with the JSON block, then NOTES.';
   }
-  async function runJob(messages, revise){
-    var j = await B.api('/api/generate', {method: 'POST', body: {prompt: messages, kind: 'gui', revise: !!revise}});
+  var lastGuiJob = null;
+  async function runJob(messages, revise, extra){
+    var body = {prompt: messages, kind: 'gui', revise: !!revise};
+    if (extra) Object.keys(extra).forEach(function(k){ body[k] = extra[k]; });
+    var j = await B.api('/api/generate', {method: 'POST', body: body});
     job = j.jobId; B.refreshMe().then(renderCost);
     var all = '', from = 0, t0 = Date.now();
     for (;;) {
@@ -447,7 +512,7 @@
       var st = await B.api('/api/job?id=' + encodeURIComponent(j.jobId) + '&from=' + from);
       if (st.text) { all += st.text; from = st.length; }
       setStatus((revise ? 'Revising… ' : 'Designing your GUI… ') + Math.round((Date.now() - t0) / 1000) + 's' + (st.thinking && !all ? ' · thinking' : ''));
-      if (st.status === 'done') { job = null; B.refreshMe().then(renderCost); return B.stripThink(all); }
+      if (st.status === 'done') { job = null; lastGuiJob = j.jobId; B.refreshMe().then(renderCost); return B.stripThink(all); }
       if (st.status === 'cancelled') { job = null; throw {message: 'Stopped — your credits were refunded.'}; }
       if (st.status === 'error') { job = null; B.refreshMe().then(renderCost); throw {message: (st.error || 'Failed.') + (st.refunded ? ' Credits refunded.' : '')}; }
     }
@@ -465,7 +530,9 @@
       var text = await runJob(msgs, false);
       var sp = sanitize(extractJSON(text));
       current = {spec: sp, raw: text, notes: notesOf(text), brief: brief, msgs: msgs};
-      show(sp, current.notes); saveLocal(); saveCloud(); setStatus('Done — ' + sp.count + ' UI objects. Click the buttons in the preview to try it.', 'ok');
+      show(sp, current.notes);
+      sp = await autoFixLayout(sp, msgs); current.spec = sp; show(sp, current.notes);
+      saveLocal(); saveCloud(); setStatus('Done — ' + sp.count + ' UI objects. Click the buttons in the preview to try it.', 'ok');
     } catch (e) { setStatus(e.message || 'Something went wrong — try again.', 'err'); }
     setBusy(false);
   }
@@ -483,7 +550,8 @@
       var text = await runJob(msgs, true);
       var sp = sanitize(extractJSON(text));
       current = {spec: sp, raw: text, notes: notesOf(text), brief: current.brief, msgs: current.msgs};
-      show(sp, current.notes); saveLocal(); saveCloud(); $('#gReviseIn').value = ''; setStatus('Updated — ' + sp.count + ' UI objects.', 'ok');
+      show(sp, current.notes);
+      sp = await autoFixLayout(sp, msgs); current.spec = sp; show(sp, current.notes); saveLocal(); saveCloud(); $('#gReviseIn').value = ''; setStatus('Updated — ' + sp.count + ' UI objects.', 'ok');
     } catch (e) { setStatus(e.message || 'Something went wrong — try again.', 'err'); }
     setBusy(false);
   }
@@ -620,6 +688,6 @@
     show(sanitize(EXAMPLE), 'A built-in example. Describe your own GUI and press Generate.');
   }
   // exposed for tests
-  window.BWGui = {sanitize: sanitize, toLuau: toLuau, EXAMPLE: EXAMPLE};
+  window.BWGui = {sanitize: sanitize, toLuau: toLuau, EXAMPLE: EXAMPLE, checkLayout: function(sp){ return checkLayout(sanitize(sp)); }};
   if (window.BW) init(); else document.addEventListener('bw:ready', init);
 })();

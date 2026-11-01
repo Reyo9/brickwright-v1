@@ -75,21 +75,26 @@ export default async (req) => {
       if (effort && process.env.AI_THINKING !== 'off') body.reasoning_effort = effort;
       log('calling', model, 'thinking', process.env.AI_THINKING === 'off' ? 'off' : 'on');
       poke();
-      const call = (b) => fetch(base + '/chat/completions', {
+      const call = (b, t) => fetch((t ? t.base : base) + '/chat/completions', {
         method: 'POST', signal: ctrl.signal,
-        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + process.env.AI_API_KEY },
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + (t ? t.key : process.env.AI_API_KEY) },
         body: JSON.stringify(b),
       });
       // busy/overloaded → wait and retry, then try the backup models in AI_FALLBACK_MODELS (comma-separated)
-      const models = [model, ...String(process.env.AI_FALLBACK_MODELS || '').split(',').map((x) => x.trim()).filter(Boolean)]
-        // lite/nano models write broken, ugly builds — only allow them for the cheap enhance task
-        .filter((m, i) => i === 0 || task === 'enhance' || !/lite|nano|mini/i.test(m));
+      const list = (v) => String(v || '').split(',').map((x) => x.trim()).filter(Boolean);
+      // second provider (e.g. NVIDIA) used when the main one is busy: AI2_API_KEY + AI2_MODELS (+ optional AI2_BASE_URL)
+      const second = process.env.AI2_API_KEY ? { base: (process.env.AI2_BASE_URL || 'https://integrate.api.nvidia.com/v1').replace(/\/$/, ''), key: process.env.AI2_API_KEY } : null;
+      const models = [{ m: model }, ...list(process.env.AI_FALLBACK_MODELS).map((m) => ({ m })), ...(second ? list(process.env.AI2_MODELS).map((m) => ({ m, t: second })) : [])]
+        // small models write broken, ugly builds — only allow them for the cheap enhance task
+        .filter((x, i) => i === 0 || task === 'enhance' || !/lite|nano|mini|bolt|lightning|e\dB\b|-\d{1,2}b\b/i.test(x.m));
       const busy = (st) => st === 429 || st === 500 || st === 502 || st === 503 || st === 504 || st === 529;
-      outer: for (const m of models) {
+      outer: for (const entry of models) {
+        const m = entry.m, tgt = entry.t || null;
         body.model = m;
+        if (tgt) { delete body.chat_template_kwargs; delete body.reasoning_effort; }
         for (let attempt = 0; attempt < 3; attempt++) {
           if (attempt) { await new Promise((r) => setTimeout(r, attempt * 4000)); poke(); }
-          try { upstream = await call(body); }
+          try { upstream = await call(body, tgt); }
           catch (e) {
             if (ctrl.signal.aborted) throw e;
             log('network error', String(e.message || e), 'model', m, 'try', attempt + 1);
@@ -102,7 +107,7 @@ export default async (req) => {
             // provider rejected the extra switches — retry without them
             await upstream.text().catch(() => '');
             delete body.chat_template_kwargs; delete body.reasoning_effort;
-            upstream = await call(body);
+            upstream = await call(body, tgt);
           }
           if (!busy(upstream.status)) break outer;
           // 429 = this model's quota is used up — retrying it only burns more quota, so go straight to the next model

@@ -39,7 +39,7 @@
     return j;
   }
   async function refreshMe(){
-    try { me = await api('/api/me'); } catch (e) { me = me || {signedIn: false, plans: [], costs: {quick: 10, standard: 35, detailed: 75, revise: 10}}; }
+    try { me = await api('/api/me'); } catch (e) { me = me || {signedIn: false, plans: [], costs: {quick: 10, standard: 35, detailed: 75, ultra: 120, revise: 10}}; }
     renderAccount(); renderCost(); if ($('#plans')) renderPricing();
     if ($('#historyGrid') && histSignedIn !== !!(me && me.signedIn)) loadHistory(true);
     document.dispatchEvent(new Event('bw:me'));
@@ -48,7 +48,7 @@
 
   // ------------------------------------------------------------------ Lua runtime (runs scripts in the browser)
   var preludeText = null;
-  var preludeReady = fetch('/vendor/prelude.lua?v=202610312000').then(function(r){ return r.text(); }).then(function(t){ preludeText = t; });
+  var preludeReady = fetch('/vendor/prelude.lua?v=202611011200').then(function(r){ return r.text(); }).then(function(t){ preludeText = t; });
   async function runScript(src){
     await preludeReady;
     try { return window.runLuauPreview(window.fengari, preludeText, C.BRICK_COLOR_FULL, src); }
@@ -481,6 +481,85 @@
   }
 
   // ------------------------------------------------------------------ build checker (runs on the preview result)
+  // exact touch test between two parts using their real shapes (separating axis theorem), tolerance e.
+  // Box = 8 corners, Wedge = 6 corners (slope on the front -Z), Cylinder = 12-sided prism along local X,
+  // Ball = sphere (tested against the other part's box). CornerWedge falls back to its box.
+  function axesOf(p){ var m = p.m; return [[m[3], m[6], m[9]], [m[4], m[7], m[10]], [m[5], m[8], m[11]]]; }
+  function toW(ax, v){ return [v[0] * ax[0][0] + v[1] * ax[1][0] + v[2] * ax[2][0], v[0] * ax[0][1] + v[1] * ax[1][1] + v[2] * ax[2][1], v[0] * ax[0][2] + v[1] * ax[1][2] + v[2] * ax[2][2]]; }
+  function norm(v){ var l = Math.hypot(v[0], v[1], v[2]); return l > 1e-6 ? [v[0] / l, v[1] / l, v[2] / l] : null; }
+  var CYL_N = 12;
+  function shapeOf(p){
+    if (p._shape) return p._shape;
+    var ax = axesOf(p), c = [p.m[0], p.m[1], p.m[2]], hx = p.sz[0] / 2, hy = p.sz[1] / 2, hz = p.sz[2] / 2, lv = [], ln = [], le = [];
+    if (p.s === 'wedge') {
+      [-1, 1].forEach(function(sx){ lv.push([sx * hx, -hy, -hz], [sx * hx, -hy, hz], [sx * hx, hy, hz]); });
+      ln = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 1 / hy, -1 / hz]]; le = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, hy, hz]];
+    } else if (p.s === 'cylinder') {
+      var r = Math.min(hy, hz);
+      for (var k = 0; k < CYL_N; k++) {
+        var a = k / CYL_N * Math.PI * 2, cy = Math.cos(a) * r, cz = Math.sin(a) * r;
+        lv.push([-hx, cy, cz], [hx, cy, cz]);
+        var am = (k + 0.5) / CYL_N * Math.PI * 2; ln.push([0, Math.cos(am), Math.sin(am)]); le.push([0, -Math.sin(am), Math.cos(am)]);
+      }
+      ln.push([1, 0, 0]); le.push([1, 0, 0]);
+    } else {
+      [-1, 1].forEach(function(sx){ [-1, 1].forEach(function(sy){ [-1, 1].forEach(function(sz){ lv.push([sx * hx, sy * hy, sz * hz]); }); }); });
+      ln = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]; le = ln;
+    }
+    p._shape = {
+      v: lv.map(function(v){ var w = toW(ax, v); return [w[0] + c[0], w[1] + c[1], w[2] + c[2]]; }),
+      n: ln.map(function(v){ return norm(toW(ax, v)); }).filter(Boolean),
+      e: le.map(function(v){ return norm(toW(ax, v)); }).filter(Boolean)
+    };
+    return p._shape;
+  }
+  function proj(vs, n){ var lo = Infinity, hi = -Infinity; for (var i = 0; i < vs.length; i++) { var d = vs[i][0] * n[0] + vs[i][1] * n[1] + vs[i][2] * n[2]; if (d < lo) lo = d; if (d > hi) hi = d; } return [lo, hi]; }
+  function obbTouch(P, Q, e){
+    var ca = [P.m[0], P.m[1], P.m[2]], cb = [Q.m[0], Q.m[1], Q.m[2]];
+    if (P.s === 'ball' || Q.s === 'ball') {
+      var S = P.s === 'ball' ? P : Q, O = S === P ? Q : P, c = S === P ? ca : cb, rad = Math.min(S.sz[0], S.sz[1], S.sz[2]) / 2 + e;
+      if (O.s === 'ball') { var d2 = Math.hypot(ca[0] - cb[0], ca[1] - cb[1], ca[2] - cb[2]); return d2 <= rad + Math.min(O.sz[0], O.sz[1], O.sz[2]) / 2; }
+      // sphere vs convex shape: separated if any face normal of the shape puts the centre further than r outside
+      var sh = shapeOf(O), axs = sh.n.slice();
+      // also the axis from the shape's nearest vertex to the centre (catches corners)
+      var best = null, bd = Infinity; sh.v.forEach(function(v){ var d = Math.hypot(v[0] - c[0], v[1] - c[1], v[2] - c[2]); if (d < bd) { bd = d; best = v; } });
+      var vn = norm([c[0] - best[0], c[1] - best[1], c[2] - best[2]]); if (vn) axs.push(vn);
+      for (var i = 0; i < axs.length; i++) {
+        var pr = proj(sh.v, axs[i]), cp = c[0] * axs[i][0] + c[1] * axs[i][1] + c[2] * axs[i][2];
+        if (cp - rad > pr[1] || cp + rad < pr[0]) return false;
+      }
+      return true;
+    }
+    var A = shapeOf(P), B = shapeOf(Q), axes = A.n.concat(B.n);
+    for (var i2 = 0; i2 < A.e.length; i2++) for (var j = 0; j < B.e.length; j++) {
+      var u = A.e[i2], w = B.e[j], cr = norm([u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]]);
+      if (cr) axes.push(cr);
+    }
+    for (var t = 0; t < axes.length; t++) {
+      var pa = proj(A.v, axes[t]), pb = proj(B.v, axes[t]);
+      if (pa[0] > pb[1] + e || pb[0] > pa[1] + e) return false;
+    }
+    return true;
+  }
+  // parts completely hidden inside another solid box (wasted parts, often a mis-placed detail)
+  function buriedParts(parts){
+    var out = [], boxes = parts.map(function(p, i){ return {p: p, i: i}; }).filter(function(x){ return x.p.s === 'box' && x.p.t < 0.5; });
+    parts.forEach(function(p, i){
+      if (p.t > 0.5) return;
+      var sh = shapeOf(p);
+      for (var k = 0; k < boxes.length; k++) {
+        var B = boxes[k].p; if (boxes[k].i === i) continue;
+        if (B.sz[0] * B.sz[1] * B.sz[2] <= p.sz[0] * p.sz[1] * p.sz[2]) continue;
+        var ax = axesOf(B), inside = sh.v.every(function(v){
+          var d = [v[0] - B.m[0], v[1] - B.m[1], v[2] - B.m[2]];
+          for (var a = 0; a < 3; a++) if (Math.abs(d[0] * ax[a][0] + d[1] * ax[a][1] + d[2] * ax[a][2]) > B.sz[a] / 2 - 0.05) return false;
+          return true;
+        });
+        if (inside) { out.push({name: p.name || ('part #' + (i + 1)), inside: B.name || 'another part'}); break; }
+      }
+    });
+    return out;
+  }
   function analyzeBuild(parts){
     var n = parts.length, E = 0.2, box = [], i;
     if (!n) return [];
@@ -498,13 +577,13 @@
       for (var b = a + 1; b < n; b++) {
         var B = box[order[b]];
         if (B[0] > A[3] + E) break;
-        if (B[1] <= A[4] + E && A[1] <= B[4] + E && B[2] <= A[5] + E && A[2] <= B[5] + E) par[f(order[a])] = f(order[b]);
+        if (B[1] <= A[4] + E && A[1] <= B[4] + E && B[2] <= A[5] + E && A[2] <= B[5] + E && obbTouch(parts[order[a]], parts[order[b]], E)) par[f(order[a])] = f(order[b]);
       }
     }
     var grounded = {};
     for (i = 0; i < n; i++) if (box[i][1] <= groundY + E) grounded[f(i)] = true;
     var out = [];
-    for (i = 0; i < n; i++) if (!grounded[f(i)]) out.push({name: parts[i].name || ('part #' + (i + 1)), gap: +(box[i][1] - groundY).toFixed(1)});
+    for (i = 0; i < n; i++) if (!grounded[f(i)] && !/^(Float|Halo|Aura|Spark|Particle|Glow)/i.test(parts[i].name || "")) out.push({name: parts[i].name || ('part #' + (i + 1)), gap: +(box[i][1] - groundY).toFixed(1)});
     return out;
   }
   function badColors(src){
@@ -525,22 +604,29 @@
     var fl = analyzeBuild(run.parts);
     if (fl.length) list.push(fl.length + ' part(s) float in mid-air, not touching the ground or any other part: ' +
       fl.slice(0, 25).map(function(x){ return x.name + ' (bottom ' + x.gap + ' studs above the ground)'; }).join(', ') + (fl.length > 25 ? ', …' : '') + '.');
-    return {list: list, score: (run.ok ? 0 : 1000) + fl.length + bc.length * 5, floating: fl.length, colors: bc.length};
+    var bu = run.parts.length < 2500 ? buriedParts(run.parts) : [];
+    if (bu.length >= 2) list.push(bu.length + ' part(s) are completely hidden inside another part, so they can\'t be seen: ' +
+      bu.slice(0, 15).map(function(x){ return x.name + ' (inside ' + x.inside + ')'; }).join(', ') + (bu.length > 15 ? ', …' : '') + '. Move each one out to the surface it should sit on (sink it only 0.05 into that surface) or delete it.');
+    return {list: list, score: (run.ok ? 0 : 1000) + fl.length + bc.length * 5 + (bu.length >= 2 ? bu.length * 0.5 : 0), floating: fl.length, colors: bc.length, buried: bu.length >= 2 ? bu.length : 0};
   }
   async function autoFix(b){
     if (!lastJobId || !last.script) return;
     var run = await runScript(last.script), pr = problemsOf(run, last.script);
-    if (!pr.list.length) return;
-    var jobId = lastJobId;
-    var label = (!run.ok ? 'Script error found' : pr.floating ? pr.floating + ' floating part' + (pr.floating === 1 ? '' : 's') + ' found' : 'Wrong color names found') + ' — fixing it (free)…';
-    setStatus(label, '', true); b.relabel(label);
-    try {
-      var text = await aiCall('fix', 'fix', function(t, th){ $('#codeOut').textContent = t; b.lines((t.match(/\n/g) || []).length, th); }, {fixOf: jobId, problems: pr.list.join('\n')});
-      var p = C.parseResponse(text);
-      if (!p.script) return;
-      var run2 = await runScript(p.script), pr2 = problemsOf(run2, p.script);
-      if (run2.parts.length && pr2.score < pr.score) { last.script = p.script; last.notes = p.notes || last.notes; }
-    } catch (e) { /* keep the original build */ }
+    // up to two free repair rounds; keep whichever version scores best
+    for (var round = 1; round <= 2 && pr.list.length; round++) {
+      var jobId = lastJobId;
+      var label = (!run.ok ? 'Script error found' : pr.floating ? pr.floating + ' floating part' + (pr.floating === 1 ? '' : 's') + ' found' : pr.buried ? 'Hidden parts found' : 'Wrong color names found') +
+        ' — fixing it (free' + (round > 1 ? ', round 2' : '') + ')…';
+      setStatus(label, '', true); b.relabel(label);
+      try {
+        var text = await aiCall('fix', 'fix', function(t, th){ $('#codeOut').textContent = t; b.lines((t.match(/\n/g) || []).length, th); }, {fixOf: jobId, problems: pr.list.join('\n')});
+        var p = C.parseResponse(text);
+        if (!p.script) break;
+        var run2 = await runScript(p.script), pr2 = problemsOf(run2, p.script);
+        if (!(run2.parts.length && pr2.score < pr.score)) break;
+        last.script = p.script; last.notes = p.notes || last.notes; run = run2; pr = pr2;
+      } catch (e) { break; /* keep the best build so far */ }
+    }
     $('#codeOut').textContent = last.script;
   }
 
@@ -746,7 +832,7 @@
   function histCard(it){
     return '<div class="card hist-card" data-hist="' + esc(it.id) + '" role="button" tabindex="0">' +
       '<div class="thumb">' + (it.thumb ? '<img loading="lazy" alt="" src="' + esc(it.thumb) + '">' : '<span>no preview</span>') + '</div>' +
-      '<div class="meta"><h3 title="' + esc(it.brief) + '">' + esc(it.brief || 'Untitled build') + '</h3><div class="sub"><span>' + ago(it.created) + ' · ' + (it.parts || 0) + ' parts</span><span class="badge">' + esc(it.detail) + '</span></div></div>' +
+      '<div class="meta"><h3 title="' + esc(it.brief) + '">' + esc(it.brief || 'Untitled build') + '</h3><div class="sub"><span>' + ago(it.created) + ' · ' + (it.parts || 0) + ' parts</span><span class="badge">' + esc(it.detail === 'ultra' ? 'Detailed+' : it.detail) + '</span></div></div>' +
       '<button class="hist-del" data-hist-del="' + esc(it.id) + '" aria-label="Delete from history" title="Delete">×</button></div>';
   }
   async function loadHistory(reset){
@@ -875,7 +961,7 @@
     viewer = new Viewer(vEl, {autoRotate: true});
     runScript(bd.script).then(function(run){ if (viewer && !viewer.destroyed) viewer.setParts(run.parts); });
     var side = $('#bSide', b);
-    side.innerHTML = '<h3>' + esc(bd.title) + '</h3><div class="by">by ' + esc(bd.name) + ' · ' + ago(bd.created) + (bd.parts ? ' · ' + bd.parts + ' parts' : '') + ' · <span class="badge">' + esc(bd.detail) + '</span></div>' +
+    side.innerHTML = '<h3>' + esc(bd.title) + '</h3><div class="by">by ' + esc(bd.name) + ' · ' + ago(bd.created) + (bd.parts ? ' · ' + bd.parts + ' parts' : '') + ' · <span class="badge">' + esc(bd.detail === 'ultra' ? 'Detailed+' : bd.detail) + '</span></div>' +
       (bd.brief ? '<span class="label">Prompt</span><div class="brief">' + esc(bd.brief) + '</div>' : '') +
       '<div class="build-actions">' +
       '<button class="btn like-btn' + (bd.liked ? ' on' : '') + '" id="bLike">♥ <span>' + bd.likes + '</span></button>' +
@@ -905,7 +991,7 @@
   function renderPricing(){
     if (!me) return;
     var c = me.costs || {};
-    $('#pricingLede').textContent = 'Quick builds cost ' + c.quick + ' credits, Standard ' + c.standard + ', Detailed ' + c.detailed + ', a revision ' + c.revise + '. Failed builds are always free.';
+    $('#pricingLede').textContent = 'Quick builds cost ' + c.quick + ' credits, Standard ' + c.standard + ', Detailed ' + c.detailed + ', Detailed+ ' + (c.ultra || 120) + ', a revision ' + c.revise + '. Failed builds are always free.';
     var free = '<div class="plan"><h3>Free</h3><div class="price">$0</div><ul><li>' + (me.freeCreditsPerMonth || 0).toLocaleString() + ' credits every month</li><li>Every detail level</li><li>Share to Explore</li></ul>' +
       (me.signedIn ? (me.plan === 'free' ? '<div class="current">Your plan</div>' : '') : '<button class="btn btn-block" data-action="signin">Sign up free</button>') + '</div>';
     var paid = (me.plans || []).map(function(p){
@@ -945,7 +1031,7 @@
   $$('.nav-links a').forEach(function(a){ if (a.getAttribute('data-page') === PAGE) a.classList.add('active'); });
 
   // ------------------------------------------------------------------ boot
-  window.BW = {api: api, Viewer: Viewer, runScript: runScript, session: session, openLogin: openLogin, toast: toast, esc: esc, ago: ago,
+  window.BW = {touch: function(a, b, e){ return obbTouch(a, b, e); }, analyzeBuild: function(p){ return analyzeBuild(p); }, buriedParts: function(p){ return buriedParts(p); }, api: api, Viewer: Viewer, runScript: runScript, session: session, openLogin: openLogin, toast: toast, esc: esc, ago: ago,
     stripThink: stripThink, download: download, refreshMe: refreshMe, getMe: function(){ return me; }, openModal: openModal, closeModal: closeModal};
   (async function(){
     if ($('#heroViewer')) {

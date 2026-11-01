@@ -69,7 +69,7 @@ export default async (req) => {
       const name = clean(body.name, 24) || 'Anonymous builder';
       const brief = clean(body.brief, 500);
       const script = String(body.script || '');
-      const detail = ['quick', 'standard', 'detailed'].includes(body.detail) ? body.detail : 'standard';
+      const detail = ['quick', 'standard', 'detailed', 'ultra'].includes(body.detail) ? body.detail : 'standard';
       if (title.length < 3) return json({ error: 'Give your build a title (at least 3 characters).' }, 400);
       if (script.length < 40 || script.length > 150000 || !/Instance\.new/.test(script)) return json({ error: 'That doesn’t look like a Brickwright script.' }, 400);
       const thumb = String(body.thumb || '');

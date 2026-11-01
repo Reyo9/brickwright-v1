@@ -29,7 +29,7 @@ export default async (req, context) => {
     }
   }
   if (images > 1) return json({ error: 'Only one reference image per build.' }, 400);
-  const detail = ['quick', 'standard', 'detailed'].includes(body.detail) ? body.detail : 'standard';
+  const detail = ['quick', 'standard', 'detailed', 'ultra'].includes(body.detail) ? body.detail : 'standard';
   const task = ['rig', 'animate', 'enhance', 'gui'].includes(body.kind) ? body.kind : null;
   let cost = task === 'gui' && body.revise ? (CONFIG.costs.gui_revise || 15) : task ? (CONFIG.costs[task] || 10) : body.kind === 'revise' ? CONFIG.costs.revise : CONFIG.costs[detail];
   let maxTokens = task === 'enhance' ? 2500 : task === 'gui' ? 20000 : task ? 12000 : (CONFIG.maxTokens[detail] || 24000);
@@ -47,19 +47,24 @@ export default async (req, context) => {
   }
 
   // Free automatic repair: once per finished build, the page sends back what its preview found wrong
+  let fixDepth = 0;
   if (body.fixOf) {
     const fixOf = String(body.fixOf);
     const rawJob = await redis('GET', 'job:' + fixOf);
     const rawReq = await redis('GET', 'job:' + fixOf + ':req');
     const oldText = await redis('GET', 'job:' + fixOf + ':text');
     const old = rawJob && JSON.parse(rawJob);
-    if (!old || !rawReq || !oldText || old.acct !== s.sub || old.status !== 'done' || old.fix) return json({ error: 'This build can’t be auto-fixed.' }, 400);
+    if (!old || !rawReq || !oldText || old.acct !== s.sub || old.status !== 'done' || Number(old.fix) >= 2) return json({ error: 'This build can’t be auto-fixed.' }, 400);
     if (!(await redis('SET', 'job:' + fixOf + ':fixed', '1', 'NX', 'EX', 3600))) return json({ error: 'Already fixed once.' }, 409);
+    fixDepth = Number(old.fix || 0) + 1;
     const req0 = JSON.parse(rawReq);
     const problems = String(body.problems || '').slice(0, 4000);
     messages = [...req0.messages, { role: 'assistant', content: oldText },
-      { role: 'user', content: 'I ran your script in a Roblox-accurate preview and checked it. Problems found:\n' + problems +
-        '\n\nFix every problem: replace any non-existent API with real Roblox API, and move every floating part down/over so it rests on or touches what holds it up (the floor, the part below it, or the wall it is mounted on). Keep everything that was already right. Reply in the same SCRIPT:/NOTES: format with the COMPLETE corrected script.' }];
+      { role: 'user', content: req0.task
+        ? 'I loaded your answer into the preview and checked it. Problems found:\n' + problems +
+          '\n\nFix every problem and keep everything that was already right. Reply in exactly the same format as before (the same ```json block' + (req0.task === 'gui' ? ', then NOTES:' : '') + ') with the COMPLETE corrected answer.'
+        : 'I ran your script in a Roblox-accurate preview and checked it. Problems found:\n' + problems +
+          '\n\nFix every problem: replace any non-existent API with real Roblox API, and move every floating part down/over so it rests on or touches what holds it up (the floor, the part below it, or the wall it is mounted on). Keep everything that was already right. Reply in the same SCRIPT:/NOTES: format with the COMPLETE corrected script.' }];
     maxTokens = req0.maxTokens;
     cost = 0;
   }
@@ -80,7 +85,7 @@ export default async (req, context) => {
 
   const id = crypto.randomUUID();
   try {
-    await redis('SET', 'job:' + id, JSON.stringify({ acct: s.sub, bucket: acct.bucket, cost: acct.unlimited ? 0 : cost, ipKey, status: 'queued', created: Date.now(), fix: !!body.fixOf }), 'EX', 3600);
+    await redis('SET', 'job:' + id, JSON.stringify({ acct: s.sub, bucket: acct.bucket, cost: acct.unlimited ? 0 : cost, ipKey, status: 'queued', created: Date.now(), fix: fixDepth }), 'EX', 3600);
     await redis('SET', 'job:' + id + ':req', JSON.stringify({ messages, maxTokens, task }), 'EX', 3600);
     const r = await fetch(new URL('/api/generate-run', req.url), {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-internal': internalToken() }, body: JSON.stringify({ id }),

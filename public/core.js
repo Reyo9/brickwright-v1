@@ -3,7 +3,8 @@ window.BWCore = (function(){
   var details = [
     {key:'quick', label:'Quick', meta:'~20-30 parts', desc:'Clean silhouette and the one or two signature details. Fastest to read.'},
     {key:'standard', label:'Standard', meta:'~45-70 parts', desc:'Trim, accents, a real fine-detail pass at the focal points. The usual choice.'},
-    {key:'detailed', label:'Detailed', meta:'~90-150 parts', desc:'Fine detailing throughout — for a hero prop or a focal building.'}
+    {key:'detailed', label:'Detailed', meta:'~90-150 parts', desc:'Fine detailing throughout — for a hero prop or a focal building.'},
+    {key:'ultra', label:'Detailed+', meta:'~180-300 parts', desc:'Maximum detail — layered forms, gradients of 3+ tones per material, trims, textures and tiny accents everywhere. Every surface gets a second pass of small details. For showpiece models.'}
   ];
   var chips = ["Garden shed","Dragon with wings","Pickup truck","Market stall","Harbor crane","Treasure chest"];
   var EXAMPLE_SCRIPT = [

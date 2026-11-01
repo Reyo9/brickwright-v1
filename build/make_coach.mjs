@@ -125,12 +125,32 @@ HARD RULES (a build that breaks one of these is rejected):
   - EVERY script uses the rule-27 stud pack + sweep and the paint()/make(..., variant) helpers — even simple characters. Never fall back to only Plastic + Studs surfaces.
   - DARK SUBJECTS (black dragon, shadow knight, night car): never paint everything "Really black" — it reads as one blob. Use 3 tones: "Black" for the main body, "Dark stone grey"/"Really black" for belly, joints and trim, plus ONE bright accent colour (purple, red, cyan, gold) on eyes, spikes, wing fingers, claws or stripes. Same for all-white subjects: White + Light stone grey + accent. No single colour on more than ~60% of the parts.
   - DRAGONS / WINGED CREATURES: build them like example "a posed creature, skeleton first": spine() for neck+body+tail (8+ points, raised neck, curving tail), bone()/joint() legs, and BIG wings — when spread, wingspan is at least 1.5x the body length, with 3 finger bones and membrane() panels between them. Wings that are smaller than the head, or a body made of straight boxes, are a failed build.
-30. Before answering, mentally walk through every part: is its bottom touching something? Is it inside a wall by accident? Fix it.
+30. NO LOOSE PARTS — the preview checks every part and sends floating ones back to be fixed:
+  - Every part must touch or slightly overlap (0.05-0.2 studs) the part it hangs from. Place things by computing positions from the parent's faces (top = y + size.Y/2), never by eyeballing numbers.
+  - Rotated or angled parts (wings, roofs, horns, ropes, bones) count only where their real surface touches — use bone() between two joint points that sit ON or INSIDE the parent, and put a joint() ball at each end.
+  - Decorations on a surface (sprinkles, rivets, windows, eyes, logos, buttons) sink 0.05 into that surface instead of sitting on top of it.
+  - Things meant to hover (halos, magic orbs, sparkles, floating islands) must have a Name starting with "Float", "Halo", "Glow" or "Aura" so the checker knows they are intentional.
+  - Before answering, walk through every part: is it touching its parent? Is it inside a wall by accident? Fix it.
 
 `;
 const ex = (f) => fs.readFileSync(root + 'build/examples/' + f + '.lua', 'utf8').trim();
 // Example library: every paid/hand-made build. Each request gets the 3 best matches for its brief.
 const EXAMPLES = [
+  { id: 'knight', label: 'an armoured character holding items, bottom-up', tags: 'knight|warrior|soldier|guard|paladin|armor|armour|samurai|viking|gladiator|hero|king|prince|character|person|man|statue', code: ex('knight') },
+  { id: 'spaceship', label: 'a spaceship on a landing pad, built out from the hull', tags: 'spaceship|space|ship|starship|fighter|rocket|ufo|shuttle|starfighter|x.?wing|sci.?fi|alien|galaxy|jet', code: ex('spaceship') },
+  { id: 'livingroom', label: 'a furniture interior scene (floor, rug, sofa, table, lamp)', tags: 'room|living|bedroom|kitchen|interior|furniture|sofa|couch|table|chair|bed|lamp|desk|office|house|home|cozy', code: ex('livingroom') },
+  { id: 'cake', label: 'a tiered food item with drips and decorations', tags: 'cake|birthday|cupcake|dessert|wedding|tier|candle|pastry|bakery|sweet|donut|pie', code: ex('cake') },
+  { id: 'sword', label: 'a weapon prop on a base (blade sunk into the base)', tags: 'sword|blade|katana|dagger|knife|axe|spear|weapon|scythe|hammer|mace|excalibur|legend', code: ex('sword') },
+  { id: 'blaster', label: 'a hard-surface gun built out from a core block', tags: 'gun|blaster|rifle|pistol|laser|ray|shotgun|sniper|cannon|launcher|weapon|sci.?fi|futuristic', code: ex('blaster') },
+  { id: 'dog', label: 'a standing four-legged pet, legs up', tags: 'dog|puppy|corgi|wolf|fox|pet|animal|horse|cow|pig|sheep|goat|deer|lion|tiger|bear|pony', code: ex('dog') },
+  { id: 'cat', label: 'a sitting pet with a tail lying on the base', tags: 'cat|kitten|kitty|pet|animal|bunny|rabbit|hamster|mouse|sitting|seated|owl', code: ex('cat') },
+  { id: 'plane', label: 'an aircraft on landing gear', tags: 'plane|airplane|jet|aircraft|helicopter|fighter|glider|airport|propeller|wing|fly', code: ex('plane') },
+  { id: 'boat', label: 'a ship on a water base', tags: 'boat|ship|pirate|sail|yacht|canoe|submarine|ferry|sea|ocean|harbor|dock|raft', code: ex('boat') },
+  { id: 'chest', label: 'an open container overflowing with items, hinged lid', tags: 'chest|treasure|loot|coin|gold|crate|box|gift|present|pirate|reward|jewel', code: ex('chest') },
+  { id: 'burger', label: 'a stacked food meal on a tray', tags: 'burger|hamburger|sandwich|fries|soda|meal|fast.?food|food|hotdog|taco|stack|snack|drink', code: ex('burger') },
+  { id: 'shop', label: 'a shop building with a front wall built around window and door holes', tags: 'shop|store|cafe|restaurant|bakery|market|building|house|ice.?cream|kiosk|stand|diner|mall|awning', code: ex('shop') },
+  { id: 'tower', label: 'a tall framed structure with braces, platform and ladder', tags: 'tower|watchtower|lookout|fort|lighthouse|treehouse|scaffold|stilts|platform|ladder|bridge|tall|castle|outpost', code: ex('tower') },
+  { id: 'candy', label: 'a candy-themed creature (themed materials on a skeleton build)', tags: 'candy|sweet|lollipop|gummy|chocolate|sugar|dessert|cotton|frosting|cake', code: ex('candy_dragon') },
   { id: 'cottage', label: 'a building with props', tags: 'house|home|cottage|cabin|shop|store|building|castle|tower|church|barn|hut|tavern|inn|school|hospital|station|temple|mansion|windmill|lighthouse|village|town|room|interior|furniture|bed|table|chair', code: ex('cottage') },
   { id: 'supercar', label: 'a vehicle — copy its wheel() helper for every wheeled build', tags: 'car|vehicle|truck|bus|van|kart|race|racing|jeep|taxi|police|tank|tractor|wheel|bike|motor|train|cart|wagon|plane|jet|boat|ship|sub', code: ex('supercar') },
   { id: 'dragon', label: 'a posed creature, skeleton first', tags: 'dragon|wing|bird|eagle|phoenix|griffin|bat|angel|creature|beast|monster|dino|raptor|wyvern|serpent|snake', code: ex('dragon') },

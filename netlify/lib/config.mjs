@@ -18,10 +18,10 @@ export const CONFIG = {
   freeCreditsPerNetworkPerMonth: 640,
 
   // What each action costs.
-  costs: { quick: 10, standard: 35, detailed: 75, revise: 10, rig: 30, animate: 45, enhance: 3, gui: 40, gui_revise: 15 },
+  costs: { quick: 10, standard: 35, detailed: 75, ultra: 120, revise: 10, rig: 30, animate: 45, enhance: 3, gui: 40, gui_revise: 15 },
 
   // Output cap per detail level (reasoning models also spend some of this on thinking).
-  maxTokens: { quick: 16000, standard: 24000, detailed: 40000 },
+  maxTokens: { quick: 16000, standard: 24000, detailed: 40000, ultra: 64000 },
 
   // Default AI: NVIDIA Nemotron (free endpoint, OpenAI-compatible). Override with AI_BASE_URL / AI_MODEL.
   aiBaseUrl: 'https://integrate.api.nvidia.com/v1',

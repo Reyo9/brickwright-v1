@@ -45,3 +45,4 @@
 .gthumb{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:10px;background:linear-gradient(160deg,#2c4a2c,#16251a)}
 .gthumb .gmini{position:absolute;left:0;top:0;transform-origin:0 0;pointer-events:none}
 .gcard-actions{display:flex;gap:8px;margin-top:4px}
+.gcheck .gn{animation:none!important;scale:none!important;rotate:none!important;transition:none!important}

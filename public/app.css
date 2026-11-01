@@ -118,7 +118,7 @@ select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,va
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .chip{border:1px solid var(--line);background:var(--surface-2);color:var(--muted);border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer}
 .chip:hover{color:var(--fg);border-color:var(--line-2)}
-.segmented{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:var(--bg-2);border:1px solid var(--line);padding:5px;border-radius:14px}
+.segmented{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;background:var(--bg-2);border:1px solid var(--line);padding:5px;border-radius:14px}
 .seg{border:1px solid transparent;background:transparent;border-radius:10px;padding:9px 6px;cursor:pointer;text-align:center}
 .seg b{display:block;font-size:13.5px}
 .seg small{display:block;color:var(--faint);font-size:11.5px}

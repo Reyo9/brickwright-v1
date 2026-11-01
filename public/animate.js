@@ -182,9 +182,99 @@
     }).join('');
   }
 
+  // ------------------------------------------------------------ rig + animation checker
+  // Uses the same real-shape touch test as the build checker. Finds limbs that don't touch their parent,
+  // pivots that aren't at the joint, and limbs that come apart while an animation plays.
+  function pivotDist(pt, idx){
+    var best = Infinity;
+    idx.forEach(function(i){
+      var p = state.parts[i], m = p.m, d = [pt[0] - m[0], pt[1] - m[1], pt[2] - m[2]], out = 0;
+      for (var a = 0; a < 3; a++) { var v = d[0] * m[3 + a] + d[1] * m[6 + a] + d[2] * m[9 + a], o = Math.abs(v) - p.sz[a] / 2; if (o > 0) out += o * o; }
+      best = Math.min(best, Math.sqrt(out));
+    });
+    return best;
+  }
+  function contactPairs(g, par){
+    var pairs = [];
+    for (var a = 0; a < g.parts.length && pairs.length < 60; a++) for (var b = 0; b < par.parts.length && pairs.length < 60; b++) {
+      if (B.touch(state.parts[g.parts[a]], state.parts[par.parts[b]], 0.25)) pairs.push([g.parts[a], par.parts[b]]);
+    }
+    return pairs;
+  }
+  var pairCache = {rig: null, map: {}};
+  function pairsOf(rig, g, par){
+    if (pairCache.rig !== rig) pairCache = {rig: rig, map: {}};
+    if (!pairCache.map[g.name]) pairCache.map[g.name] = par && par.parts.length ? contactPairs(g, par) : [];
+    return pairCache.map[g.name];
+  }
+  function checkRig(rig){
+    var probs = [], byName = {};
+    rig.groups.forEach(function(g){ byName[g.name] = g; });
+    rig.groups.forEach(function(g){
+      if (!g.parent || !g.parts.length) return;
+      var par = byName[g.parent]; if (!par || !par.parts.length) return;
+      var pairs = pairsOf(rig, g, par);
+      if (!pairs.length) { probs.push('Group "' + g.name + '" does not touch its parent "' + g.parent + '" — re-parent it to the group it is actually attached to.'); return; }
+      var dg = pivotDist(g.pivot, g.parts), dp = pivotDist(g.pivot, par.parts);
+      if (dg > 1 || dp > 1) probs.push('The pivot of "' + g.name + '" (' + g.pivot.map(function(v){ return Math.round(v * 10) / 10; }).join(', ') + ') is not at the joint where it meets "' + g.parent + '" (' + Math.round(Math.max(dg, dp) * 10) / 10 + ' studs away). Move it to the point where the two touch (shoulder, hip, wing root, neck base).');
+    });
+    return probs;
+  }
+  // 3x3 rotation for Euler XYZ in degrees (same order as the preview: R = Rx * Ry * Rz)
+  function rotXYZ(x, y, z){
+    x *= D; y *= D; z *= D;
+    var cx = Math.cos(x), sx = Math.sin(x), cy = Math.cos(y), sy = Math.sin(y), cz = Math.cos(z), sz = Math.sin(z);
+    return [cy * cz, -cy * sz, sy,
+      cx * sz + sx * sy * cz, cx * cz - sx * sy * sz, -sx * cy,
+      sx * sz - cx * sy * cz, sx * cz + cx * sy * sz, cx * cy];
+  }
+  function mul3(a, b){ var r = []; for (var i = 0; i < 3; i++) for (var j = 0; j < 3; j++) r.push(a[i * 3] * b[j] + a[i * 3 + 1] * b[3 + j] + a[i * 3 + 2] * b[6 + j]); return r; }
+  function app3(m, v){ return [m[0] * v[0] + m[1] * v[1] + m[2] * v[2], m[3] * v[0] + m[4] * v[1] + m[5] * v[2], m[6] * v[0] + m[7] * v[1] + m[8] * v[2]]; }
+  // world transform of every group at time t: {R, T} where world point = R * p + T
+  function groupWorld(rig, a, t){
+    var W = {}, byName = {}; rig.groups.forEach(function(g){ byName[g.name] = g; });
+    rig.groups.forEach(function(g){
+      var k = a.keys[g.name] ? sample(a.keys[g.name], t) : [t, 0, 0, 0, 0, 0, 0];
+      var R = rotXYZ(k[1], k[2], k[3]);
+      var pp = g.parent ? byName[g.parent].pivot : [0, 0, 0];
+      var local = [g.pivot[0] - pp[0] + k[4], g.pivot[1] - pp[1] + k[5], g.pivot[2] - pp[2] + k[6]];
+      var P = g.parent ? W[g.parent] : {R: [1, 0, 0, 0, 1, 0, 0, 0, 1], T: [0, 0, 0]};
+      var lt = app3(P.R, local);
+      W[g.name] = {R: mul3(P.R, R), T: [P.T[0] + lt[0], P.T[1] + lt[1], P.T[2] + lt[2]], pivot: g.pivot};
+    });
+    return W;
+  }
+  function posedPart(i, w){
+    var p = state.parts[i], m = p.m, rel = app3(w.R, [m[0] - w.pivot[0], m[1] - w.pivot[1], m[2] - w.pivot[2]]);
+    var R = mul3(w.R, [m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11]]);
+    return {s: p.s, sz: p.sz, m: [w.T[0] + rel[0], w.T[1] + rel[1], w.T[2] + rel[2]].concat(R)};
+  }
+  function checkAnim(rig, a){
+    var probs = [], byName = {}, N = 16;
+    rig.groups.forEach(function(g){ byName[g.name] = g; });
+    var worst = {};
+    for (var s2 = 0; s2 <= N; s2++) {
+      var t = a.length * s2 / N, W = groupWorld(rig, a, t);
+      rig.groups.forEach(function(g){
+        if (!g.parent) return;
+        var prs = pairsOf(rig, g, byName[g.parent]);
+        if (!prs.length) return;
+        var ok = prs.some(function(pr){ return B.touch(posedPart(pr[0], W[g.name]), posedPart(pr[1], W[g.parent]), 0.35); });
+        if (!ok) { worst[g.name] = worst[g.name] || []; worst[g.name].push(Math.round(t * 100) / 100); }
+      });
+    }
+    Object.keys(worst).forEach(function(n){
+      probs.push('"' + n + '" comes off "' + byName[n].parent + '" at t = ' + worst[n].slice(0, 5).join(', ') + 's. Keep it attached: rotate around its pivot only, use smaller angles, and don\'t offset (dx/dy/dz) a limb away from its parent.');
+    });
+    return probs;
+  }
+
   // ------------------------------------------------------------ AI jobs
-  async function aiTask(kind, text){
-    var job = await B.api('/api/generate', {method: 'POST', body: {prompt: [{role: 'user', content: text}], kind: kind, histId: state.histId}});
+  var lastTaskJob = null;
+  async function aiTask(kind, text, extra){
+    var body = {prompt: [{role: 'user', content: text}], kind: kind, histId: state.histId};
+    if (extra) Object.keys(extra).forEach(function(k){ body[k] = extra[k]; });
+    var job = await B.api('/api/generate', {method: 'POST', body: body});
     currentJob = job.jobId; B.refreshMe().then(renderCost);
     var all = '', from = 0, t = Date.now();
     for (;;) {
@@ -193,7 +283,7 @@
       if (st.text) { all += st.text; from = st.length; }
       var s = Math.round((Date.now() - t) / 1000);
       setStatus((kind === 'rig' ? 'Rigging… ' : 'Animating… ') + s + 's' + (st.thinking ? ' · thinking' : ''), '', true);
-      if (st.status === 'done') { currentJob = null; B.refreshMe().then(renderCost); return B.stripThink(all); }
+      if (st.status === 'done') { currentJob = null; lastTaskJob = job.jobId; B.refreshMe().then(renderCost); return B.stripThink(all); }
       if (st.status === 'cancelled') { currentJob = null; B.refreshMe().then(renderCost); throw {message: 'Stopped — your credits were refunded.'}; }
       if (st.status === 'error') { currentJob = null; B.refreshMe().then(renderCost); throw {message: (st.error || 'Failed.') + (st.refunded ? ' Credits refunded.' : '')}; }
     }
@@ -205,6 +295,14 @@
     try {
       var text = await aiTask('rig', 'Model: "' + state.title + '" (' + state.parts.length + ' parts)\nParts:\n' + partLines());
       state.rig = validateRig(extractJSON(text));
+      var rp = checkRig(state.rig);
+      if (rp.length && lastTaskJob) {
+        setStatus('Fixing ' + rp.length + ' joint problem' + (rp.length === 1 ? '' : 's') + ' (free)…', '', true);
+        try {
+          var fixed = validateRig(extractJSON(await aiTask('rig', 'Model: "' + state.title + '" (' + state.parts.length + ' parts)\nParts:\n' + partLines(), {fixOf: lastTaskJob, problems: rp.join('\n')})));
+          if (checkRig(fixed).length < rp.length) state.rig = fixed;
+        } catch (e) { /* keep the first rig */ }
+      }
       state.anims = []; state.current = -1;
       rebuildScene(); renderRig(); renderAnims();
       setStatus('Rigged into ' + state.rig.groups.length + ' joints. Now pick or describe an animation.', 'ok');
@@ -243,6 +341,15 @@
       var text = await aiTask('animate', 'Model: "' + state.title + '" · kind ' + state.rig.kind + ' · faces ' + state.rig.front +
         '\nGroups (name | parent | pivot | size | parts):\n' + rigSummary() + '\n\nAnimation request: ' + req);
       var a = validateAnim(extractJSON(text));
+      var ap = checkAnim(state.rig, a);
+      if (ap.length && lastTaskJob) {
+        setStatus('A limb comes loose during the animation — fixing it (free)…', '', true);
+        try {
+          var a2 = validateAnim(extractJSON(await aiTask('animate', 'Model: "' + state.title + '" · kind ' + state.rig.kind + ' · faces ' + state.rig.front +
+            '\nGroups (name | parent | pivot | size | parts):\n' + rigSummary() + '\n\nAnimation request: ' + req, {fixOf: lastTaskJob, problems: ap.join('\n')})));
+          if (checkAnim(state.rig, a2).length < ap.length) a = a2;
+        } catch (e) { /* keep the first animation */ }
+      }
       var base = a.name, k = 2; while (state.anims.some(function(x){ return x.name === a.name; })) a.name = base + ' ' + (k++);
       state.anims.push(a); state.current = state.anims.length - 1;
       renderAnims(); play();
@@ -496,6 +603,7 @@
     }
   }
   document.addEventListener('bw:me', function(){ renderCost(); var m = B && B.getMe(); if (B && ahSigned !== !!(m && m.signedIn)) loadAnimHist(true); });
+  window.BWAnimCheck = {checkRig: checkRig, checkAnim: checkAnim, setParts: function(p){ state.parts = p; }};
   if (window.BW) boot(); else document.addEventListener('DOMContentLoaded', function(){ boot(); });
   window.__bwAnim = {get state(){ return state; }, exportScript: function(){ return exportScript(); }};
 })();
