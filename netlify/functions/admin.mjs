@@ -34,7 +34,7 @@ export default async (req) => {
     topYesterday: await topUsers(yesterday, 10),
     failures: failuresRaw ? JSON.parse(failuresRaw) : [],
     sharedBuilds: Number(await redis('ZCARD', 'builds:recent').catch(() => 0)) || 0,
-    model: process.env.AI_MODEL || '', fallbacks: process.env.AI_FALLBACK_MODELS || '',
+    model: process.env.AI_MODEL || '', fallbacks: process.env.AI_FALLBACK_MODELS || '', backup: process.env.AI2_API_KEY ? (process.env.AI2_MODELS || '(AI2_MODELS not set)') : '',
   });
 };
 

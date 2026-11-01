@@ -35,7 +35,7 @@ export default async (req) => {
   let idleTimer = null;
   const poke = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => ctrl.abort(), IDLE_MS); };
 
-  let usedModel = '', lastStatus = 0, full = '', failure = null, lastSave = 0, cancelled = false, thinking = 0;
+  let usedModel = '', tried = [], lastStatus = 0, full = '', failure = null, lastSave = 0, cancelled = false, thinking = 0;
   const save = async (force) => {
     if (!force && Date.now() - lastSave < 700) return;
     lastSave = Date.now();
@@ -86,7 +86,7 @@ export default async (req) => {
       const second = process.env.AI2_API_KEY ? { base: (process.env.AI2_BASE_URL || 'https://integrate.api.nvidia.com/v1').replace(/\/$/, ''), key: process.env.AI2_API_KEY } : null;
       const models = [{ m: model }, ...list(process.env.AI_FALLBACK_MODELS).map((m) => ({ m })), ...(second ? list(process.env.AI2_MODELS).map((m) => ({ m, t: second })) : [])]
         // small models write broken, ugly builds — only allow them for the cheap enhance task
-        .filter((x, i) => i === 0 || task === 'enhance' || !/lite|nano|mini|bolt|lightning|e\dB\b|-\d{1,2}b\b/i.test(x.m));
+        .filter((x, i) => i === 0 || task === 'enhance' || !/(^|[-_./])(lite|nano|mini|bolt|lightning|e\d+b|\d{1,2}b)([-_.]|$)/i.test(x.m));
       const busy = (st) => st === 429 || st === 500 || st === 502 || st === 503 || st === 504 || st === 529;
       outer: for (const entry of models) {
         const m = entry.m, tgt = entry.t || null;
@@ -103,6 +103,7 @@ export default async (req) => {
           }
           log('AI answered HTTP', upstream.status, 'model', m, 'try', attempt + 1);
           usedModel = m; lastStatus = upstream.status;
+          if (!tried.includes(m + ' ' + upstream.status)) tried.push(m + ' ' + upstream.status);
           if (upstream.status === 400 && (body.chat_template_kwargs || body.reasoning_effort)) {
             // provider rejected the extra switches — retry without them
             await upstream.text().catch(() => '');
@@ -163,7 +164,7 @@ export default async (req) => {
       ? 'The AI took too long to answer — it may be overloaded. Please try again.'
       : String(e.message || e);
     if (busyFail && !job.fix) await stat('busy');
-    await logFailure({ task: task || 'build', status: lastStatus, model: usedModel, error: busyFail ? 'busy: ' + (e.detail || '') : String(e.message || e).slice(0, 300) });
+    await logFailure({ task: task || 'build', status: lastStatus, model: tried.length > 1 ? tried.join(' → ') : usedModel, error: busyFail ? 'busy: ' + (e.detail || 'every model was busy or out of quota') : String(e.message || e).slice(0, 300) });
     log('failed:', failure);
   }
 

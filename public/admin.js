@@ -38,7 +38,7 @@
   function render(d){
     var s = d.series, w = function(k){ return sum(s[k].slice(-7)); }, t = function(k){ return last(s[k]); };
     var doneW = w('builds_done'), failW = w('builds_failed');
-    document.getElementById('admSub').textContent = 'Today (UTC) vs the last 7 days · AI model ' + (d.model || 'default') + (d.fallbacks ? ' → ' + d.fallbacks : '');
+    document.getElementById('admSub').textContent = 'Today (UTC) vs the last 7 days · AI model ' + (d.model || 'default') + (d.fallbacks ? ' → ' + d.fallbacks : '') + (d.backup ? ' → backup ' + d.backup : ' · no backup provider set (AI2_API_KEY)');
     document.getElementById('admBody').innerHTML =
       '<div class="kpis">' +
         kpi('Builds started', t('builds_started'), w('builds_started')) +

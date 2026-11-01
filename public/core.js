@@ -85,11 +85,23 @@ window.BWCore = (function(){
     ctx.fillStyle = 'rgb(214,214,214)';
     ctx.fillRect(0, 0, size, size);
     if (kind === 'weld') {
-      ctx.fillStyle = 'rgb(150,150,150)'; ctx.fillRect(0, size - 3, size, 3); ctx.fillRect(size - 3, 0, 3, size);
-      ctx.fillStyle = 'rgb(245,245,245)'; ctx.fillRect(0, 0, size, 2); ctx.fillRect(0, 0, 2, size);
+      // Roblox "2022 Weld": a raised diamond lattice — diagonal grooves both ways, dark edge + light edge
+      // (matched to Studio close-ups). 4 diamonds per tile edge; lines wrap so the tile repeats seamlessly.
+      ctx.lineWidth = 2;
+      for (var k = -4; k <= 8; k++) {
+        var o = k * 16;
+        ctx.strokeStyle = 'rgb(120,120,120)';
+        ctx.beginPath(); ctx.moveTo(o, 0); ctx.lineTo(o + size, size); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(o, size); ctx.lineTo(o + size, 0); ctx.stroke();
+        ctx.strokeStyle = 'rgb(250,250,250)';
+        ctx.beginPath(); ctx.moveTo(o + 2, 0); ctx.lineTo(o + 2 + size, size); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(o + 2, size); ctx.lineTo(o + 2 + size, 0); ctx.stroke();
+      }
     } else if (kind === 'glue') {
-      var seed = 7; for (var i = 0; i < 90; i++) { seed = (seed * 9301 + 49297) % 233280; var x = seed % size; seed = (seed * 9301 + 49297) % 233280; var y = seed % size;
-        ctx.fillStyle = i % 2 ? 'rgb(232,232,232)' : 'rgb(196,196,196)'; ctx.fillRect(x, y, 2, 2); }
+      // Roblox "2022 Glue": a fine grain of tiny checker dots
+      for (var gy = 0; gy < size; gy += 4) for (var gx = (gy / 4) % 2 ? 2 : 0; gx < size; gx += 4) {
+        ctx.fillStyle = 'rgb(170,170,170)'; ctx.fillRect(gx, gy, 2, 2);
+      }
     } else {
       var a0 = Math.round(size * 0.27), a1 = Math.round(size * 0.73), e = Math.max(2, Math.round(size * 0.06));
       ctx.fillStyle = 'rgb(255,255,255)'; ctx.fillRect(a0, a0, a1 - a0, e); ctx.fillRect(a0, a0, e, a1 - a0);
@@ -188,7 +200,13 @@ window.BWCore = (function(){
       var diameter = Math.min(sz[1], sz[2]);
       geo = new THREE.CylinderGeometry(diameter / 2, diameter / 2, sz[0], 20);
       geo.rotateZ(Math.PI / 2);
-      mat = variantMat(part, Math.max(diameter, sz[0]), plain);
+      // separate tiling for the round side and the two end caps, so a thin disc's edge isn't squashed
+      var cvt = variantTile(part.variant), ctex = part.variant ? getStudTileTexture(cvt.kind) : null;
+      if (ctex) {
+        var tileMat = function(u, v){ var t = ctex.clone(); t.needsUpdate = true; t.repeat.set(Math.max(1, Math.round(u * cvt.scale)), Math.max(1, Math.round(v * cvt.scale))); return plain({map: t}); };
+        var capMat = tileMat(diameter, diameter);
+        mat = [tileMat(Math.PI * diameter, sz[0]), capMat, capMat];
+      } else mat = plain();
     } else if (part.s === 'ball') {
       geo = new THREE.SphereGeometry(Math.min(sz[0], sz[1], sz[2]) / 2, 18, 14); // Roblox balls use the smallest side
       mat = variantMat(part, Math.min(sz[0], sz[1], sz[2]) * 1.6, plain);

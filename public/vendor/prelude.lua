@@ -830,7 +830,16 @@ function Inst.GetService(o, name)
 	return s
 end
 Inst.FindService = Inst.GetService
-function Inst.GetObjects() return {} end
+-- the stud material pack: hand back its MaterialVariants so scripts that copy them into
+-- MaterialService (and then check MS:FindFirstChild(variant)) keep the variant they chose
+function Inst.GetObjects()
+	local f = newInstance("Folder", nil)
+	for _, n in ipairs({ "2022 Universal", "2022 Small Stud", "2022 Big Stud", "2022 Weld", "2022 Glue" }) do
+		local v = newInstance("MaterialVariant", f)
+		rawget(v, "_p").Name = n
+	end
+	return { f }
+end
 function Inst.InsertService() return nil end
 game = DataModel
 workspace = WS
